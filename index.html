@@ -22,9 +22,9 @@
     --muted:#B8C6D4;
     --muted-2:#94A5B8;
     --pri:#FFA83C;          /* 文字・アイコン用（背景との比 9.9） */
-    --pri-fill:#FF922B;     /* 塗りボタン用（--on-priとの比 8.3） */
-    --pri-press:#E07A16;
-    --on-pri:#1A1206;       /* 塗りボタンの上に乗る文字色 */
+    --pri-fill:#CC4610;     /* 塗りボタン用（白文字との比 4.72＝AA達成。旧#E2571Fは3.74で未達だった） */
+    --pri-press:#A93A0C;
+    --on-pri:#FFFFFF;       /* 塗りボタンの上に乗る文字色 */
     --pri-dim:rgba(255,168,60,.18);
     --green:#3DDC8B;
     --green-dim:rgba(61,220,139,.16);
@@ -223,10 +223,10 @@
   @keyframes tdIn{from{transform:translateY(-16px);opacity:0;}to{transform:translateY(0);opacity:1;}}
   .t-done .td-l{flex:1;min-width:0;}
   .t-done .td-t{font-size:19px;font-weight:800;letter-spacing:-.01em;}
-  .t-done .td-s{font-size:12px;opacity:.75;margin-top:3px;}
+  .t-done .td-s{font-size:12px;opacity:.85;margin-top:3px;}
   .td-btn{flex:0 0 54px;width:54px;height:54px;border-radius:14px;font-size:22px;line-height:1;
-          display:grid;place-items:center;background:rgba(0,0,0,.16);color:var(--on-pri);}
-  .td-btn:active{background:rgba(0,0,0,.3);}
+          display:grid;place-items:center;background:rgba(255,255,255,.18);color:var(--on-pri);}
+  .td-btn:active{background:rgba(255,255,255,.34);}
 
   /* ---------- Store bar ---------- */
   .storebar{display:flex;margin-bottom:10px;}
@@ -565,7 +565,7 @@
   /* ---------- カレンダーの部位表示 ---------- */
   .cal-parts{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);display:flex;gap:2px;}
   .cal-parts i{display:block;width:5px;height:5px;border-radius:2px;}
-  .cal-cell.sel .cal-parts i{outline:1px solid rgba(0,0,0,.45);}
+  .cal-cell.sel .cal-parts i{outline:1px solid rgba(255,255,255,.55);}
   .cal-legend{display:flex;flex-wrap:wrap;gap:8px;margin:-8px 0 16px;}
   .cal-legend span{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--muted);}
   .cal-legend i{width:9px;height:9px;border-radius:3px;}
