@@ -11,32 +11,91 @@
 <meta name="apple-mobile-web-app-title" content="training support">
 <meta name="application-name" content="training support">
 <style>
+  /* ============================================================
+     配色
+     ・暗い方は「面の差」を広げた。旧配色は 背景→カード の比が 1.11 しかなく、
+       人の目にはほぼ同じ色。どこが区切りか分からず「色合いが見にくい」原因だった。
+     ・明るい方を追加。暗い画面が読みにくい人（乱視だと明るい文字が滲む）と、
+       照明の強いジムでの利用に効く。
+     ・端末の設定に追従。設定から手動で固定もできる。
+     ============================================================ */
   :root{
-    /* 続けたくなる配色：深い藍のベース＋炎のアクセント＋達成の緑 */
-    --bg:#0B0F16;
-    --surface:#141B25;
-    --surface-2:#1E2733;
-    --surface-3:#2B3644;
-    --border:#506173;       /* 枠線（旧#374553は背景との比1.5で見えなかった） */
+    color-scheme:dark;
+    --bg:#080B11;
+    --surface:#18202C;
+    --surface-2:#28323F;
+    --surface-3:#3B4757;
+    --border:#55677A;
     --text:#F4F8FC;
-    --muted:#B8C6D4;
-    --muted-2:#94A5B8;
-    --pri:#FFA83C;          /* 文字・アイコン用（背景との比 9.9） */
-    --pri-fill:#CC4610;     /* 塗りボタン用（白文字との比 4.72＝AA達成。旧#E2571Fは3.74で未達だった） */
+    --muted:#BECBD8;
+    --muted-2:#9CADC0;
+    --pri:#FFA83C;          /* 文字・アイコン用（カード上で 8.5） */
+    --pri-fill:#CC4610;     /* 塗りボタン用（白文字との比 4.72＝AA達成） */
     --pri-press:#A93A0C;
-    --on-pri:#FFFFFF;       /* 塗りボタンの上に乗る文字色 */
+    --on-pri:#FFFFFF;
     --pri-dim:rgba(255,168,60,.18);
+    --pri-line:rgba(255,168,60,.45);
     --green:#3DDC8B;
     --green-dim:rgba(61,220,139,.16);
-    --red:#FF5C63;
+    --green-line:rgba(61,220,139,.5);
+    --on-green:#062713;     /* 緑の上に乗る文字色 */
+    --red:#FF6B72;
     --red-dim:rgba(255,92,99,.14);
     --streak:#FF7A3D;
+    --streak-dim:rgba(255,122,61,.16);
+    --streak-line:rgba(255,122,61,.35);
+    --sun:#F0868C;          /* カレンダーの日曜 */
+    --sat:#7FB2FF;          /* カレンダーの土曜 */
+    --bar:rgba(24,32,44,.92);      /* 下に固定される帯（タイマー） */
+    --bar-2:rgba(8,11,17,.94);     /* 下に固定される帯（ナビ・入力） */
+    --scrim:rgba(0,0,0,.6);        /* シートの背後を暗くする幕 */
+    --shadow:rgba(0,0,0,.5);
+    --knob:#FFFFFF;                /* トグルのつまみ */
+    --timer-text:#FFFFFF;
+    --timer-soon:#FFC24D;
     --nav-h:64px;
     --timer-h:76px;
     --safe-b:env(safe-area-inset-bottom,0px);
     --safe-t:env(safe-area-inset-top,0px);
     --num:"SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  }
+
+  /* 明るい配色。真っ白は照明の下でギラつくので、わずかに青みを落とした地にする */
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --bg:#EEF2F7;
+    --surface:#FFFFFF;
+    --surface-2:#F1F5FA;
+    --surface-3:#E0E8F1;
+    --border:#A9B8CA;
+    --text:#131A23;
+    --muted:#4E5D6C;
+    --muted-2:#5B6976;
+    --pri:#A8420A;          /* 明るい地の上では、オレンジは濃くしないと読めない（6.1） */
+    --pri-fill:#CC4610;
+    --pri-press:#A93A0C;
+    --on-pri:#FFFFFF;
+    --pri-dim:rgba(204,70,16,.10);
+    --pri-line:rgba(204,70,16,.38);
+    --green:#10704A;
+    --green-dim:rgba(16,112,74,.10);
+    --green-line:rgba(16,112,74,.45);
+    --on-green:#FFFFFF;
+    --red:#C22B33;
+    --red-dim:rgba(194,43,51,.10);
+    --streak:#B23F0C;
+    --streak-dim:rgba(178,63,12,.10);
+    --streak-line:rgba(178,63,12,.35);
+    --sun:#C0392F;
+    --sat:#1F5FBF;
+    --bar:rgba(255,255,255,.93);
+    --bar-2:rgba(238,242,247,.95);
+    --scrim:rgba(19,26,35,.42);
+    --shadow:rgba(19,26,35,.18);
+    --knob:#FFFFFF;
+    --timer-text:#131A23;
+    --timer-soon:#A8420A;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
@@ -71,7 +130,7 @@
   .date-arrow:disabled{opacity:.32;}
   .date-cur{flex:1;height:44px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
   .date-cur:active{background:var(--surface-3);}
-  .date-today{height:44px;padding:0 14px;border-radius:11px;background:var(--pri-dim);border:1px solid rgba(255,168,60,.4);color:var(--pri);font-size:13px;font-weight:800;}
+  .date-today{height:44px;padding:0 14px;border-radius:11px;background:var(--pri-dim);border:1px solid var(--pri-line);color:var(--pri);font-size:13px;font-weight:800;}
   /* ---------- Calendar ---------- */
   .cal-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
   .cal-nav{width:46px;height:46px;flex:0 0 46px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:24px;line-height:1;display:grid;place-items:center;}
@@ -82,7 +141,7 @@
   .cal-caret{font-size:11px;color:var(--pri);}
   .cal-wd{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;}
   .cal-wd span{text-align:center;font-size:11px;font-weight:700;color:var(--muted-2);padding:4px 0;}
-  .cal-wd span.sun{color:#E8737A;} .cal-wd span.sat{color:#6FA8FF;}
+  .cal-wd span.sun{color:var(--sun);} .cal-wd span.sat{color:var(--sat);}
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:18px;}
   .cal-cell{position:relative;height:46px;border-radius:10px;background:transparent;color:var(--text);font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;display:grid;place-items:center;}
   .cal-cell.empty{background:none;}
@@ -105,7 +164,7 @@
   /* ---------- Add to home screen ---------- */
   .a2hs,.bkrem{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);z-index:45;
         background:var(--surface-3);border:1px solid var(--border);border-radius:14px;padding:14px 40px 14px 16px;
-        box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transform:translateY(12px);pointer-events:none;
+        box-shadow:0 8px 28px var(--shadow);opacity:0;transform:translateY(12px);pointer-events:none;
         transition:opacity .25s,transform .25s;}
   .a2hs.show,.bkrem.show{opacity:1;transform:translateY(0);pointer-events:auto;}
   .bkrem-go{width:100%;height:46px;margin-top:12px;border-radius:11px;
@@ -206,7 +265,7 @@
   /* ---------- 部位チップ・言語切替 ---------- */
   .part-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
   .part-chip{font-size:12px;font-weight:800;color:var(--pri);background:var(--pri-dim);
-             border:1px solid rgba(255,168,60,.35);border-radius:20px;padding:4px 11px;}
+             border:1px solid var(--pri-line);border-radius:20px;padding:4px 11px;}
   .lang-row{display:flex;gap:8px;margin-bottom:16px;}
   .lang-b{flex:1;height:50px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);
           color:var(--muted);font-size:15px;font-weight:800;}
@@ -217,7 +276,7 @@
   /* ---------- タイマー終了の表示 ---------- */
   .t-done{position:fixed;left:10px;right:10px;top:calc(var(--safe-t) + 10px);z-index:80;
           display:none;align-items:center;gap:10px;padding:14px 12px 14px 16px;border-radius:16px;
-          background:var(--pri-fill);color:var(--on-pri);box-shadow:0 10px 30px rgba(0,0,0,.55);
+          background:var(--pri-fill);color:var(--on-pri);box-shadow:0 10px 30px var(--shadow);
           animation:tdIn .22s ease;}
   .t-done.show{display:flex;}
   @keyframes tdIn{from{transform:translateY(-16px);opacity:0;}to{transform:translateY(0);opacity:1;}}
@@ -230,7 +289,7 @@
 
   /* ---------- Store bar ---------- */
   .storebar{display:flex;margin-bottom:10px;}
-  .store-btn{display:flex;align-items:center;gap:8px;height:44px;padding:0 14px;border-radius:11px;background:var(--pri-dim);border:1px solid rgba(255,168,60,.4);color:var(--pri);font-size:15px;font-weight:800;max-width:100%;}
+  .store-btn{display:flex;align-items:center;gap:8px;height:44px;padding:0 14px;border-radius:11px;background:var(--pri-dim);border:1px solid var(--pri-line);color:var(--pri);font-size:15px;font-weight:800;max-width:100%;}
   .store-btn:active{background:var(--surface-3);}
   .store-btn .st-ico{font-size:14px;}
   .store-btn .st-caret{font-size:10px;}
@@ -370,7 +429,7 @@
     color:var(--muted);font-size:15px;font-weight:600;white-space:nowrap;border:1px solid transparent;
     transition:background .12s,color .12s,border-color .12s;
   }
-  .chip.active{background:var(--pri-dim);color:var(--pri);border-color:rgba(255,168,60,.45);}
+  .chip.active{background:var(--pri-dim);color:var(--pri);border-color:var(--pri-line);}
   .chip.add{color:var(--pri);background:transparent;border:1px dashed var(--border);width:46px;padding:11px 0;text-align:center;font-size:20px;line-height:1;}
 
   /* ---------- Cards ---------- */
@@ -384,7 +443,7 @@
   .prev-ref{margin:14px 0 8px;padding:12px 14px;background:var(--surface-2);border-radius:12px;}
   .prev-ref .label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.03em;margin-bottom:8px;display:flex;justify-content:space-between;}
   .prev-ref .sets{display:flex;flex-wrap:wrap;gap:6px 10px;}
-  .prev-ref .pset{font-size:16px;color:#C6CBD2;font-variant-numeric:tabular-nums;}
+  .prev-ref .pset{font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;}
   .prev-ref .pset b{color:var(--text);font-weight:700;}
   .prev-empty{font-size:14px;color:var(--muted-2);}
 
@@ -421,8 +480,8 @@
     .set-del{flex:0 0 40px;}
   }
 
-  .set.pr .field{border-color:rgba(53,208,127,.5);background:var(--green-dim);}
-  .pr-badge{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--green);color:#062713;font-size:11px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4);}
+  .set.pr .field{border-color:var(--green-line);background:var(--green-dim);}
+  .pr-badge{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--green);color:var(--on-green);font-size:11px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px var(--shadow);}
 
   .set-cmp{flex-basis:100%;font-size:11px;color:var(--muted-2);padding-left:34px;margin:-4px 0 4px;font-variant-numeric:tabular-nums;}
 
@@ -435,14 +494,14 @@
   /* ---------- Timer bar ---------- */
   #timerbar{
     position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + var(--safe-b));
-    height:var(--timer-h);background:rgba(23,26,31,.92);backdrop-filter:blur(12px);
+    height:var(--timer-h);background:var(--bar);backdrop-filter:blur(12px);
     -webkit-backdrop-filter:blur(12px);border-top:1px solid var(--border);
     display:none;align-items:center;gap:10px;padding:0 14px;z-index:30;
   }
   #timerbar.show{display:flex;}
   .t-display{flex:0 0 auto;display:flex;flex-direction:column;min-width:78px;}
-  .t-time{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1;color:#FFFFFF;}
-  .t-time.soon{color:#FFC24D;}      /* 残りわずか */
+  .t-time{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1;color:var(--timer-text);}
+  .t-time.soon{color:var(--timer-soon);}      /* 残りわずか */
   .t-time.done{color:var(--green);}
   .t-time.idle{color:var(--muted);}
   .t-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.05em;margin-top:3px;}
@@ -462,7 +521,7 @@
   .w-field .unit{position:absolute;right:54px;bottom:8px;font-size:11px;color:var(--muted-2);}
   .w-save{flex:0 0 84px;border-radius:12px;background:var(--pri-fill);color:var(--on-pri);font-size:16px;font-weight:800;}
   .w-save:active{background:var(--pri-press);}
-  .w-save.done{background:var(--green);color:#062713;}
+  .w-save.done{background:var(--green);color:var(--on-green);}
   .w-date{font-size:12px;color:var(--muted);margin:2px 2px 14px;}
   .w-datepick{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .w-datepick .w-date{margin:0;font-size:14px;color:var(--text);font-weight:700;}
@@ -505,7 +564,7 @@
   /* ---------- Bottom nav ---------- */
   #nav{
     position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav-h) + var(--safe-b));
-    padding-bottom:var(--safe-b);background:rgba(11,15,22,.94);backdrop-filter:blur(12px);
+    padding-bottom:var(--safe-b);background:var(--bar-2);backdrop-filter:blur(12px);
     -webkit-backdrop-filter:blur(12px);border-top:1px solid var(--border);
     display:flex;z-index:40;
   }
@@ -514,7 +573,7 @@
   .nav-item.active{color:var(--pri);}
 
   /* ---------- Modal / sheet ---------- */
-  .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:70;display:none;
+  .backdrop{position:fixed;inset:0;background:var(--scrim);z-index:70;display:none;
             overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   /* 下から出るシートなので、中身は必ず画面の下端に寄せる
      （flex-endが無いと上端に張りついて、時計や電波表示に重なってしまう） */
@@ -550,7 +609,7 @@
   .set-row .txt b{display:block;font-size:15px;font-weight:700;}
   .set-row .txt span{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;}
   .sw{flex:0 0 52px;width:52px;height:31px;border-radius:999px;background:var(--surface-3);position:relative;transition:background .15s;cursor:pointer;}
-  .sw::after{content:"";position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;background:#fff;transition:transform .15s;}
+  .sw::after{content:"";position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;background:var(--knob);transition:transform .15s;}
   .sw.on{background:var(--pri);}
   .sw.on::after{transform:translateX(21px);}
   .sheet .del-link{display:block;text-align:center;margin-top:10px;padding-bottom:calc(18px + var(--safe-b));
@@ -558,7 +617,7 @@
   .pill-label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.03em;margin:0 2px 8px;}
   .area-pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
   .area-pill{padding:10px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);font-size:14px;font-weight:700;}
-  .area-pill.active{background:var(--pri-dim);color:var(--pri);border-color:rgba(255,168,60,.45);}
+  .area-pill.active{background:var(--pri-dim);color:var(--pri);border-color:var(--pri-line);}
 
   .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--safe-b) + 20px);transform:translateX(-50%);background:var(--surface-3);color:var(--text);padding:12px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:78;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;border:1px solid var(--border);}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -574,7 +633,7 @@
 
   /* ---------- 連続記録（続けるための動機づけ） ---------- */
   .streak{display:flex;align-items:center;gap:5px;height:34px;padding:0 11px;border-radius:999px;
-          background:rgba(255,122,61,.16);border:1px solid rgba(255,122,61,.35);
+          background:var(--streak-dim);border:1px solid var(--streak-line);
           color:var(--streak);font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .streak.zero{background:var(--surface-2);border-color:var(--border);color:var(--muted);}
 
@@ -624,7 +683,7 @@
   .ai-sug button{padding:9px 12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);
                  color:var(--text);font-size:12px;font-weight:700;}
   .ai-bar{position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + var(--safe-b));z-index:38;
-          display:flex;gap:8px;padding:10px 12px calc(10px);background:rgba(11,15,22,.96);
+          display:flex;gap:8px;padding:10px 12px calc(10px);background:var(--bar-2);
           backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--border);}
   .ai-bar input{flex:1;height:48px;padding:0 14px;border-radius:12px;background:var(--surface-2);
                 border:1px solid var(--border);color:var(--text);font-size:15px;outline:none;}
@@ -924,7 +983,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.03b";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.04";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -2692,14 +2751,39 @@ function openGoalSheet(){
 }
 
 /* 期間集計（日=直近21件 / 週=週平均 / 月=月平均、いずれも直近まで） */
+/* ============================================================
+   表示テーマ（自動 / ライト / ダーク）
+   ・「自動」は端末の設定に追従する
+   ・上のバーの色（theme-color）も合わせないと、iPhoneで境目が浮く
+   ============================================================ */
+function themePref(){ return (state && state.ui && state.ui.theme) || "auto"; }
+function applyTheme(){
+  const pref = themePref();
+  const root = document.documentElement;
+  const dark = pref==="dark" ? true
+             : pref==="light" ? false
+             : !window.matchMedia("(prefers-color-scheme: light)").matches;
+  if(pref==="auto") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", pref);
+  const m = document.querySelector('meta[name="theme-color"]');
+  if(m) m.setAttribute("content", dark ? "#080B11" : "#EEF2F7");
+  /* 体重グラフは描き直さないと線の色が前のテーマのまま残る */
+  if(typeof renderWeightChart === "function" && document.getElementById("w-chart")){
+    try{ renderWeightChart(); }catch(e){}
+  }
+}
+if(window.matchMedia){
+  const mq = window.matchMedia("(prefers-color-scheme: light)");
+  const onSys = ()=>{ if(themePref()==="auto") applyTheme(); };
+  if(mq.addEventListener) mq.addEventListener("change", onSys);
+  else if(mq.addListener) mq.addListener(onSys);
+}
+
 /* グラフの色はCSSの変数から取る（テーマを変えても線と塗りがズレない） */
 function cssVar(name, fallback){
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
 }
-const C_PRI   = cssVar("--pri",   "#FFA83C");
-const C_GREEN = cssVar("--green", "#3DDC8B");
-const C_BG    = cssVar("--bg",    "#0B0F16");
 
 function weekKey(ds){
   const p=ds.split("-").map(Number); const d=new Date(p[0],p[1]-1,p[2]);
@@ -2743,6 +2827,10 @@ function renderWeightChart(){
   const pad = Math.max((max-min)*0.15, 0.5);
   min -= pad; max += pad;
 
+  const C_PRI   = cssVar("--pri",   "#FFA83C");
+  const C_GREEN = cssVar("--green", "#3DDC8B");
+  const C_BG    = cssVar("--bg",    "#0B0F16");
+
   const W = Math.max(wrap.clientWidth || 340, 240);
   const H = 180, PX = 8, PY = 14;
   const n = series.length;
@@ -2774,8 +2862,8 @@ function renderWeightChart(){
   wrap.innerHTML =
     '<svg class="chart" viewBox="0 0 '+W+' '+H+'" style="height:'+H+'px">'+
       '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
-        '<stop offset="0%" stop-color="rgba(255,168,60,.45)"/>'+
-        '<stop offset="100%" stop-color="rgba(255,168,60,0)"/>'+
+        '<stop offset="0%" stop-color="'+C_PRI+'" stop-opacity=".40"/>'+
+        '<stop offset="100%" stop-color="'+C_PRI+'" stop-opacity="0"/>'+
       '</linearGradient></defs>'+
       '<path d="'+area+'" fill="url(#wg)"/>'+
       goalLine+
@@ -3334,6 +3422,15 @@ function openSettingsSheet(focusKey){
     '</div>'+
     '<input type="file" id="move-file" accept=".json,application/json" style="display:none">'+
     planBlock()+
+    '<div class="pill-label">'+t("x","画面の明るさ","Appearance")+'</div>'+
+    '<div class="lang-row" id="theme-row">'+
+      ['auto','light','dark'].map(v=>
+        '<button class="lang-b'+(themePref()===v?" active":"")+'" data-th="'+v+'">'+
+        t("x", v==="auto"?"自動":(v==="light"?"明るい":"暗い"),
+             v==="auto"?"Auto":(v==="light"?"Light":"Dark"))+'</button>').join("")+
+    '</div>'+
+    '<p class="set-note">「自動」は端末の設定に合わせます。'+
+      '<b>明るい場所で見づらいときは「明るい」</b>にしてください。</p>'+
     '<div class="pill-label">'+t("x","表示言語","Language")+'</div>'+
     '<div class="lang-row">'+
       '<button class="lang-b'+(LANG!=="en"?" active":"")+'" data-l="ja">日本語</button>'+
@@ -3349,6 +3446,13 @@ function openSettingsSheet(focusKey){
       '<button class="btn primary" id="set-save">保存</button>'+
     '</div>';
   showSheet();
+  sheet.querySelectorAll("#theme-row .lang-b").forEach(b=>{
+    b.onclick = ()=>{
+      state.ui.theme = b.dataset.th;
+      save(); applyTheme();
+      sheet.querySelectorAll("#theme-row .lang-b").forEach(x=> x.classList.toggle("active", x===b));
+    };
+  });
   bindSettingsExtras();
   sheet.querySelectorAll(".lang-b").forEach(b=>{
     b.onclick = ()=>{
@@ -4304,6 +4408,7 @@ pruneEmptySessions();
 }
 renderClientBar();
 if(CLOUD_CONFIG.enabled && signedIn()) cloudSync(false);
+applyTheme();
 switchTab("train");
 initBackupReminder();
 
