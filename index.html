@@ -103,11 +103,14 @@
 
 
   /* ---------- Add to home screen ---------- */
-  .a2hs{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);z-index:45;
+  .a2hs,.bkrem{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);z-index:45;
         background:var(--surface-3);border:1px solid var(--border);border-radius:14px;padding:14px 40px 14px 16px;
         box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transform:translateY(12px);pointer-events:none;
         transition:opacity .25s,transform .25s;}
-  .a2hs.show{opacity:1;transform:translateY(0);pointer-events:auto;}
+  .a2hs.show,.bkrem.show{opacity:1;transform:translateY(0);pointer-events:auto;}
+  .bkrem-go{width:100%;height:46px;margin-top:12px;border-radius:11px;
+            background:var(--pri-fill);color:var(--on-pri);font-size:15px;font-weight:800;}
+  .bkrem-go:active{background:var(--pri-press);}
   .a2hs-t{font-size:14px;font-weight:800;margin-bottom:6px;}
   .a2hs-b{font-size:12px;line-height:1.6;color:var(--muted);}
   .a2hs-b b{color:var(--text);}
@@ -766,6 +769,13 @@
 
   <div class="toast" id="toast"></div>
 
+  <div class="bkrem" id="bkrem">
+    <button class="a2hs-x" id="bkrem-x">✕</button>
+    <div class="a2hs-t">記録の控えを取りませんか</div>
+    <div class="a2hs-b" id="bkrem-b"></div>
+    <button class="bkrem-go" id="bkrem-go">いま書き出す</button>
+  </div>
+
   <div class="a2hs" id="a2hs">
     <button class="a2hs-x" id="a2hs-x">✕</button>
     <div class="a2hs-t">ホーム画面に追加すると便利です</div>
@@ -914,7 +924,8 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.03";   // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.03b";  // 更新が反映されたか確認するための版数
+const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
 const AREAS = [
@@ -3392,7 +3403,12 @@ function openMoreSettings(){
         ? 'サインイン中はアカウントに同期され、<b>機種変更しても引き継げます。</b>'
         : 'いまは<b>この端末の中だけ</b>に保存されています。ときどき書き出してファイルに残してください。')+'</p>'+
     '<input type="file" id="bk-file" accept=".json,application/json" style="display:none">'+
+    '<div class="pill-label">アプリの更新</div>'+
+    '<button class="btn ghost" id="app-reload" style="width:100%;height:50px">最新に更新</button>'+
+    '<p class="set-note">直したはずの画面が古いままのときに押してください。'+
+      '<b>記録は消えません。</b></p>'+
     '<div class="ver-row">アプリの版数 <b>'+APP_VERSION+'</b></div>'+
+    '<div class="ver-row">配信元 <b>'+BUILD_REPO+'</b></div>'+
     '<div class="sheet-btns">'+
       '<button class="btn ghost" id="more-back">戻る</button>'+
       '<button class="btn primary" id="more-close">閉じる</button>'+
@@ -3423,6 +3439,7 @@ function openMoreSettings(){
     const f = this.files[0]; this.value="";
     if(f) importData(f);
   };
+  document.getElementById("app-reload").onclick = forceReload;
   document.getElementById("more-back").onclick = ()=> openSettingsSheet(false);
   document.getElementById("more-close").onclick = hideSheet;
 }
@@ -3445,19 +3462,109 @@ function exportData(){
   const txt = JSON.stringify(payload, (k,v)=> (typeof k==="string" && k.charAt(0)==="_") ? undefined : v);
   const d = todayStr().replace(/-/g,"");
   const name = "トレーニングノート_"+d+".json";
+  const kb = Math.round(txt.length/1024);
+
+  const done = (how)=>{
+    state.ui.lastExport = Date.now();
+    state.ui.exportSnooze = 0;
+    save();
+    hideBackupReminder();
+    const note = document.getElementById("bk-note");
+    if(note) note.innerHTML = "書き出しました（約"+kb+"KB）。<b>"+how+"</b>";
+  };
+
+  /* 保存その2：従来どおりダウンロードする（共有シートが使えない環境用） */
+  const download = ()=>{
+    try{
+      const url = URL.createObjectURL(new Blob([txt], {type:"application/json"}));
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=> URL.revokeObjectURL(url), 1000);
+      done("ファイルアプリやメールに保存しておいてください。");
+    }catch(e){
+      toast("書き出しに失敗しました");
+    }
+  };
+
+  /* 保存その1：iPhoneは共有シートを直接開く。
+     「ファイルに保存」まで1タップで届くので、ダウンロード経由より確実に残せる。
+     ・share() は指で押した流れの中で呼ぶ必要があるので、ここで同期的に呼ぶ
+     ・ユーザーが閉じただけ（AbortError）のときは、失敗扱いにしない */
   try{
-    const blob = new Blob([txt], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=> URL.revokeObjectURL(url), 1000);
-    const kb = Math.round(txt.length/1024);
-    document.getElementById("bk-note").innerHTML =
-      "書き出しました（約"+kb+"KB）。<b>ファイルアプリやメールに保存しておいてください。</b>";
-  }catch(e){
-    toast("書き出しに失敗しました");
-  }
+    if(navigator.share && navigator.canShare){
+      const file = new File([txt], name, {type:"application/json"});
+      if(navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:name})
+          .then(()=> done("「ファイルに保存」を選んでおくと安心です。"))
+          .catch(err=>{ if(!err || err.name !== "AbortError") download(); });
+        return;
+      }
+    }
+  }catch(e){ /* 共有が使えない端末は下のダウンロードへ */ }
+  download();
+}
+
+/* 画面が古いままのときに、キャッシュを貫通して読み直す。
+   記録はURL（オリジン）ごとに保存されるので、?v= を足しても消えない。 */
+function forceReload(){
+  const go = ()=>{
+    const u = new URL(location.href);
+    u.searchParams.set("v", Date.now().toString(36));
+    location.replace(u.toString());
+  };
+  try{
+    if(window.caches && caches.keys){
+      caches.keys().then(ks=> Promise.all(ks.map(k=> caches.delete(k)))).then(go, go);
+      return;
+    }
+  }catch(e){}
+  go();
+}
+
+/* 「控えを取りませんか」バナー
+   記録はこの端末の中だけにあるので、書き出しを忘れると機種変更やURL変更で消える。
+   思い出すのを本人任せにしない。                                    */
+const BKREM_DAY = 86400000;
+function hideBackupReminder(){
+  const el = document.getElementById("bkrem");
+  if(el) el.classList.remove("show");
+}
+function initBackupReminder(){
+  const el = document.getElementById("bkrem");
+  if(!el || !state || !state.ui) return;
+  if(typeof signedIn === "function" && signedIn()) return;   // 同期中なら不要
+
+  /* 使い始めた初日から急かさない。記録が3日分たまってから初めて声をかける */
+  const days = {};
+  Object.keys(state.sessions||{}).forEach(k=>{
+    (state.sessions[k]||[]).forEach(x=>{ if(x && x.date && hasData(x)) days[x.date]=1; });
+  });
+  (state.weights||[]).forEach(w=>{ if(w && w.date) days[w.date]=1; });
+  if(Object.keys(days).length < 3) return;
+
+  const now = Date.now();
+  const last = state.ui.lastExport || 0;
+  if(now - (state.ui.exportSnooze || 0) < 7*BKREM_DAY) return;
+  if(last && now - last < 14*BKREM_DAY) return;
+
+  const ago = last ? Math.floor((now-last)/BKREM_DAY) : 0;
+  document.getElementById("bkrem-b").innerHTML = last
+    ? '最後に書き出してから <b>'+ago+'日</b>。記録は<b>この端末の中だけ</b>にあります。'
+    : '記録は<b>この端末の中だけ</b>にあります。書き出してファイルに残しておくと安心です。';
+
+  setTimeout(()=>{
+    const a = document.getElementById("a2hs");
+    if(a && a.classList.contains("show")) return;             // 追加案内と重ねない
+    el.classList.add("show");
+  }, 2200);
+
+  document.getElementById("bkrem-go").onclick = ()=>{ hideBackupReminder(); exportData(); };
+  document.getElementById("bkrem-x").onclick = ()=>{
+    hideBackupReminder();
+    state.ui.exportSnooze = Date.now();                       // 1週間だけ黙る
+    save();
+  };
 }
 
 function importData(file){
@@ -4198,6 +4305,7 @@ pruneEmptySessions();
 renderClientBar();
 if(CLOUD_CONFIG.enabled && signedIn()) cloudSync(false);
 switchTab("train");
+initBackupReminder();
 
 
 </script>
