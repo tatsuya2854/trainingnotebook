@@ -17,13 +17,14 @@
     --surface:#141B25;
     --surface-2:#1E2733;
     --surface-3:#2B3644;
-    --border:#374553;
+    --border:#506173;       /* 枠線（旧#374553は背景との比1.5で見えなかった） */
     --text:#F4F8FC;
-    --muted:#AEBDCC;
-    --muted-2:#8797A8;
-    --pri:#FFA83C;          /* 文字・アイコン用（背景との比 9.5） */
-    --pri-fill:#E2571F;     /* 塗りボタン用（白文字との比 4.6） */
-    --pri-press:#C4460F;
+    --muted:#B8C6D4;
+    --muted-2:#94A5B8;
+    --pri:#FFA83C;          /* 文字・アイコン用（背景との比 9.9） */
+    --pri-fill:#FF922B;     /* 塗りボタン用（--on-priとの比 8.3） */
+    --pri-press:#E07A16;
+    --on-pri:#1A1206;       /* 塗りボタンの上に乗る文字色 */
     --pri-dim:rgba(255,168,60,.18);
     --green:#3DDC8B;
     --green-dim:rgba(61,220,139,.16);
@@ -87,13 +88,13 @@
   .cal-cell.empty{background:none;}
   .cal-cell:active{background:var(--surface-2);}
   .cal-cell.today{border:1px solid var(--pri);}
-  .cal-cell.sel{background:var(--pri-fill);color:#fff;}
-  .cal-cell.future{color:var(--muted-2);opacity:.4;}
+  .cal-cell.sel{background:var(--pri-fill);color:var(--on-pri);}
+  .cal-cell.future{color:var(--muted-2);opacity:.5;}
   .cal-dot{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);}
-  .cal-cell.sel .cal-dot{background:#fff;}
+  .cal-cell.sel .cal-dot{background:var(--on-pri);}
   .cal-years{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px;}
   .cal-year{height:52px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;}
-  .cal-year.active{background:var(--pri-fill);color:#fff;border-color:var(--pri);}
+  .cal-year.active{background:var(--pri-fill);color:var(--on-pri);border-color:var(--pri);}
 
   /* ---------- Cardio / photo ---------- */
   .cardio-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
@@ -102,7 +103,7 @@
 
 
   /* ---------- Add to home screen ---------- */
-  .a2hs{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);z-index:65;
+  .a2hs{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);z-index:45;
         background:var(--surface-3);border:1px solid var(--border);border-radius:14px;padding:14px 40px 14px 16px;
         box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transform:translateY(12px);pointer-events:none;
         transition:opacity .25s,transform .25s;}
@@ -133,7 +134,7 @@
   /* ---------- メニュー ---------- */
   .mtabs{display:flex;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:14px;}
   .mtab{flex:1;height:42px;border-radius:9px;font-size:14px;font-weight:800;color:var(--muted);}
-  .mtab.active{background:var(--pri-fill);color:#fff;}
+  .mtab.active{background:var(--pri-fill);color:var(--on-pri);}
   .lv-chips{display:flex;gap:8px;margin-bottom:14px;}
   .lv-chip{flex:1;height:48px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);
            color:var(--muted);font-size:15px;font-weight:800;}
@@ -145,7 +146,7 @@
   .mn-sum{font-size:13px;line-height:1.8;color:var(--muted);margin-top:8px;}
   .mn-day{padding:14px;}
   .mn-day-h{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap;}
-  .mn-day-n{font-size:11px;font-weight:800;color:#fff;background:var(--pri-fill);border-radius:20px;padding:3px 10px;}
+  .mn-day-n{font-size:11px;font-weight:800;color:var(--on-pri);background:var(--pri-fill);border-radius:20px;padding:3px 10px;}
   .mn-day-t{font-size:16px;font-weight:800;}
   .mn-day-note{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px;}
   .mn-ex{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;width:100%;text-align:left;
@@ -172,7 +173,7 @@
 
   .pick-sec{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.03em;margin:12px 2px 7px;}
   .my-no{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
-         background:var(--pri-fill);color:#fff;font-size:11px;font-weight:800;margin-right:7px;
+         background:var(--pri-fill);color:var(--on-pri);font-size:11px;font-weight:800;margin-right:7px;
          vertical-align:middle;font-variant-numeric:tabular-nums;}
 
   /* ---------- 記録したときの動き ---------- */
@@ -202,7 +203,7 @@
   /* ---------- 部位チップ・言語切替 ---------- */
   .part-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
   .part-chip{font-size:12px;font-weight:800;color:var(--pri);background:var(--pri-dim);
-             border:1px solid rgba(176,114,245,.35);border-radius:20px;padding:4px 11px;}
+             border:1px solid rgba(255,168,60,.35);border-radius:20px;padding:4px 11px;}
   .lang-row{display:flex;gap:8px;margin-bottom:16px;}
   .lang-b{flex:1;height:50px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);
           color:var(--muted);font-size:15px;font-weight:800;}
@@ -213,16 +214,16 @@
   /* ---------- タイマー終了の表示 ---------- */
   .t-done{position:fixed;left:10px;right:10px;top:calc(var(--safe-t) + 10px);z-index:80;
           display:none;align-items:center;gap:10px;padding:14px 12px 14px 16px;border-radius:16px;
-          background:var(--pri-fill);color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.55);
+          background:var(--pri-fill);color:var(--on-pri);box-shadow:0 10px 30px rgba(0,0,0,.55);
           animation:tdIn .22s ease;}
   .t-done.show{display:flex;}
   @keyframes tdIn{from{transform:translateY(-16px);opacity:0;}to{transform:translateY(0);opacity:1;}}
   .t-done .td-l{flex:1;min-width:0;}
   .t-done .td-t{font-size:19px;font-weight:800;letter-spacing:-.01em;}
-  .t-done .td-s{font-size:12px;opacity:.85;margin-top:3px;}
+  .t-done .td-s{font-size:12px;opacity:.75;margin-top:3px;}
   .td-btn{flex:0 0 54px;width:54px;height:54px;border-radius:14px;font-size:22px;line-height:1;
-          display:grid;place-items:center;background:rgba(255,255,255,.18);color:#fff;}
-  .td-btn:active{background:rgba(255,255,255,.34);}
+          display:grid;place-items:center;background:rgba(0,0,0,.16);color:var(--on-pri);}
+  .td-btn:active{background:rgba(0,0,0,.3);}
 
   /* ---------- Store bar ---------- */
   .storebar{display:flex;margin-bottom:10px;}
@@ -259,7 +260,7 @@
 
   /* 体重タブの微調整用（0.1kg刻みなので±のまま残している） */
   .stepper{width:46px;height:46px;flex:0 0 46px;border-radius:10px;background:var(--surface-3);display:grid;place-items:center;font-size:22px;font-weight:700;color:var(--text);user-select:none;}
-  .stepper:active{background:var(--pri-fill);color:#fff;}
+  .stepper:active{background:var(--pri-fill);color:var(--on-pri);}
 
   /* ---------- ヘッダーのボタン ---------- */
   .topbar-btns{display:flex;gap:8px;flex:0 0 auto;}
@@ -279,7 +280,9 @@
   .wheel-quick{display:flex;gap:8px;margin-bottom:14px;}
   .wheel-q{flex:1;height:52px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;}
   .wheel-q.now{background:var(--pri-dim);border-color:var(--pri);color:var(--pri);}
-  .wheel-list{position:relative;max-height:min(44vh,340px);overflow-y:auto;-webkit-overflow-scrolling:touch;margin-bottom:14px;}
+  .wheel-list{position:relative;max-height:min(44vh,340px);overflow-y:auto;-webkit-overflow-scrolling:touch;margin-bottom:14px;
+              -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%);
+              mask-image:linear-gradient(to bottom,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%);}
   .wheel-item{display:flex;align-items:baseline;justify-content:center;gap:6px;width:100%;height:54px;background:transparent;border-bottom:1px solid var(--border);color:var(--text);}
   .wheel-item:active{background:var(--surface-2);}
   .wheel-item.active{background:var(--pri-dim);border-left:4px solid var(--pri);border-bottom-color:var(--pri);}
@@ -442,7 +445,7 @@
   .t-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.05em;margin-top:3px;}
   .t-presets{flex:1;display:flex;gap:7px;}
   .t-preset{flex:1;height:48px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);}
-  .t-preset:active{background:var(--pri-fill);color:#ffffff;}
+  .t-preset:active{background:var(--pri-fill);color:var(--on-pri);}
   .t-custom{flex:0 0 44px;font-size:20px;color:var(--pri);}
   .t-stop{flex:0 0 48px;height:48px;border-radius:11px;background:var(--red-dim);color:var(--red);font-size:20px;display:grid;place-items:center;}
   .t-progress{position:absolute;top:-1px;left:0;height:2px;background:var(--pri);width:0;transition:width .25s linear;}
@@ -454,7 +457,7 @@
   .w-field .val{flex:1;text-align:center;background:none;border:none;outline:none;color:var(--text);font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;width:100%;}
   .w-field .val::placeholder{color:var(--muted-2);}
   .w-field .unit{position:absolute;right:54px;bottom:8px;font-size:11px;color:var(--muted-2);}
-  .w-save{flex:0 0 84px;border-radius:12px;background:var(--pri-fill);color:#ffffff;font-size:16px;font-weight:800;}
+  .w-save{flex:0 0 84px;border-radius:12px;background:var(--pri-fill);color:var(--on-pri);font-size:16px;font-weight:800;}
   .w-save:active{background:var(--pri-press);}
   .w-save.done{background:var(--green);color:#062713;}
   .w-date{font-size:12px;color:var(--muted);margin:2px 2px 14px;}
@@ -475,7 +478,7 @@
   /* ---------- Chart mode toggle ---------- */
   .wmode{display:flex;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:4px;margin-bottom:16px;}
   .wmode-btn{flex:1;height:38px;border-radius:8px;font-size:14px;font-weight:800;color:var(--muted);}
-  .wmode-btn.active{background:var(--pri-fill);color:#fff;}
+  .wmode-btn.active{background:var(--pri-fill);color:var(--on-pri);}
 
   .chart-wrap{position:relative;width:100%;}
   .chart-stats{display:flex;gap:18px;margin-bottom:12px;}
@@ -508,25 +511,33 @@
   .nav-item.active{color:var(--pri);}
 
   /* ---------- Modal / sheet ---------- */
-  .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:none;
+  .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:70;display:none;
             overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
-  .backdrop.show{display:flex;flex-direction:column;}
+  /* 下から出るシートなので、中身は必ず画面の下端に寄せる
+     （flex-endが無いと上端に張りついて、時計や電波表示に重なってしまう） */
+  .backdrop.show{display:flex;flex-direction:column;justify-content:flex-end;}
   .sheet{width:100%;background:var(--surface);border-radius:20px 20px 0 0;
-         padding:22px 18px calc(22px + var(--safe-b));border-top:1px solid var(--border);
+         /* 上下の余白は、貼りつく見出し／ボタン側が持つ（stickyの位置がずれないように） */
+         padding:0 18px;border-top:1px solid var(--border);
          animation:up .22s ease;
          /* 画面より高くならないようにして、上部が切れるのを防ぐ */
          max-height:calc(100dvh - var(--safe-t) - 12px);
          display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .sheet > *{flex:0 0 auto;}
-  .sheet h2{position:sticky;top:-22px;background:var(--surface);z-index:2;
-            padding:2px 0 10px;margin:-2px 0 12px;}
   @keyframes up{from{transform:translateY(100%);}to{transform:translateY(0);}}
-  .sheet h2{margin:0 0 16px;font-size:18px;font-weight:800;}
+  /* 見出しは上に、ボタンは下に貼りつけて、長い一覧でも操作先を見失わないようにする */
+  .sheet h2{position:sticky;top:0;z-index:3;background:var(--surface);
+            border-radius:20px 20px 0 0;
+            margin:0 -18px;padding:22px 18px 16px;
+            font-size:18px;font-weight:800;}
+  .sheet > *:first-child:not(h2){margin-top:22px;}
   .sheet input.text{width:100%;height:54px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:0 16px;font-size:17px;color:var(--text);outline:none;margin-bottom:14px;}
   .sheet input.text:focus{border-color:var(--pri);}
-  .sheet-btns{display:flex;gap:10px;}
+  .sheet-btns{display:flex;gap:10px;position:sticky;bottom:0;z-index:3;
+              background:var(--surface);margin:0 -18px;padding:12px 18px calc(22px + var(--safe-b));}
+  .sheet-btns:not(:last-child){padding-bottom:12px;}
   .btn{flex:1;height:58px;border-radius:12px;font-size:17px;font-weight:800;}
-  .btn.primary{flex:1.4;background:var(--pri-fill);color:#ffffff;}
+  .btn.primary{flex:1.4;background:var(--pri-fill);color:var(--on-pri);}
   .btn.primary:active{background:var(--pri-press);}
   .btn.ghost{background:var(--surface-2);color:var(--text);}
   .btn.danger{background:var(--red-dim);color:var(--red);}
@@ -539,18 +550,19 @@
   .sw::after{content:"";position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;background:#fff;transition:transform .15s;}
   .sw.on{background:var(--pri);}
   .sw.on::after{transform:translateX(21px);}
-  .sheet .del-link{display:block;text-align:center;margin-top:16px;color:var(--red);font-size:14px;font-weight:600;}
+  .sheet .del-link{display:block;text-align:center;margin-top:10px;padding-bottom:calc(18px + var(--safe-b));
+                   color:var(--red);font-size:14px;font-weight:600;}
   .pill-label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.03em;margin:0 2px 8px;}
   .area-pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
   .area-pill{padding:10px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);font-size:14px;font-weight:700;}
   .area-pill.active{background:var(--pri-dim);color:var(--pri);border-color:rgba(255,168,60,.45);}
 
-  .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--safe-b) + 20px);transform:translateX(-50%);background:var(--surface-3);color:var(--text);padding:12px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:60;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;border:1px solid var(--border);}
+  .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--safe-b) + 20px);transform:translateX(-50%);background:var(--surface-3);color:var(--text);padding:12px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:78;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;border:1px solid var(--border);}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   /* ---------- カレンダーの部位表示 ---------- */
   .cal-parts{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);display:flex;gap:2px;}
   .cal-parts i{display:block;width:5px;height:5px;border-radius:2px;}
-  .cal-cell.sel .cal-parts i{outline:1px solid rgba(255,255,255,.5);}
+  .cal-cell.sel .cal-parts i{outline:1px solid rgba(0,0,0,.45);}
   .cal-legend{display:flex;flex-wrap:wrap;gap:8px;margin:-8px 0 16px;}
   .cal-legend span{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--muted);}
   .cal-legend i{width:9px;height:9px;border-radius:3px;}
@@ -577,8 +589,8 @@
   .plan-pr{font-size:15px;font-weight:800;color:var(--pri);font-variant-numeric:tabular-nums;}
   .plan-ft{font-size:12px;color:var(--muted);line-height:1.7;}
   .plan-ft b{color:var(--text);}
-  .plan-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:6px;background:var(--pri-fill);color:#fff;font-size:10px;font-weight:800;vertical-align:middle;}
-  .plan-buy{width:100%;height:46px;margin-top:10px;border-radius:11px;background:var(--pri-fill);color:#fff;font-size:14px;font-weight:800;}
+  .plan-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:6px;background:var(--pri-fill);color:var(--on-pri);font-size:10px;font-weight:800;vertical-align:middle;}
+  .plan-buy{width:100%;height:46px;margin-top:10px;border-radius:11px;background:var(--pri-fill);color:var(--on-pri);font-size:14px;font-weight:800;}
   .plan-buy:active{background:var(--pri-press);}
   .plan-buy.ghost{background:var(--surface-3);color:var(--text);}
 
@@ -592,7 +604,7 @@
   .auth-b .ab-i{font-size:17px;font-weight:900;}
   .acc-row{display:flex;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--border);
            border-radius:12px;padding:12px 14px;margin-bottom:10px;}
-  .acc-av{flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:var(--pri-fill);color:#fff;
+  .acc-av{flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:var(--pri-fill);color:var(--on-pri);
           display:grid;place-items:center;font-size:17px;font-weight:800;}
   .acc-tx{flex:1;min-width:0;}
   .acc-tx b{display:block;font-size:15px;font-weight:800;}
@@ -602,7 +614,7 @@
   #view-ai.active{display:flex;flex-direction:column;padding-bottom:calc(var(--nav-h) + var(--safe-b) + 84px);}
   .ai-log{flex:1;display:flex;flex-direction:column;gap:10px;}
   .ai-msg{max-width:88%;padding:12px 14px;border-radius:14px;font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-word;}
-  .ai-msg.me{align-self:flex-end;background:var(--pri-fill);color:#fff;border-bottom-right-radius:5px;}
+  .ai-msg.me{align-self:flex-end;background:var(--pri-fill);color:var(--on-pri);border-bottom-right-radius:5px;}
   .ai-msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:5px;}
   .ai-msg.sys{align-self:center;max-width:100%;background:var(--surface-2);border:1px dashed var(--border);color:var(--muted);font-size:12px;}
   .ai-sug{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
@@ -614,7 +626,7 @@
   .ai-bar input{flex:1;height:48px;padding:0 14px;border-radius:12px;background:var(--surface-2);
                 border:1px solid var(--border);color:var(--text);font-size:15px;outline:none;}
   .ai-bar input:focus{border-color:var(--pri);}
-  .ai-send{flex:0 0 74px;height:48px;border-radius:12px;background:var(--pri-fill);color:#fff;font-size:14px;font-weight:800;}
+  .ai-send{flex:0 0 74px;height:48px;border-radius:12px;background:var(--pri-fill);color:var(--on-pri);font-size:14px;font-weight:800;}
   .ai-send:disabled{opacity:.5;}
   .ai-quota{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
   .ai-quota b{color:var(--pri);}
@@ -902,7 +914,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.08.29";   // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.03";   // 更新が反映されたか確認するための版数
 
 /* ---------- エリア定義 ---------- */
 const AREAS = [
@@ -2313,20 +2325,36 @@ function showSheet(){
   localize(document.getElementById("sheet"));
   fitSheet();
 }
-/* キーボードが出ると表示領域が狭くなるので、シートの高さをそれに合わせる */
+/* キーボードが出ると表示領域が狭くなる。
+   シートは画面下に貼りついているので、キーボードの高さだけ持ち上げないと下端が隠れてしまう。
+   ・通常時は高さをCSSに任せる（セーフエリアを引いた値になっている）
+   ・キーボードが出ている間だけ、その分を差し引く            */
 function fitSheet(){
   const sh = document.getElementById("sheet");
-  if(!sh) return;
+  const bd = document.getElementById("backdrop");
+  if(!sh || !bd) return;
   const vv = window.visualViewport;
-  const h = vv ? vv.height : window.innerHeight;
-  sh.style.maxHeight = Math.max(220, h - 12) + "px";
+  if(!vv){ sh.style.maxHeight = ""; bd.style.bottom = ""; return; }
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  if(kb > 40){
+    bd.style.bottom = kb + "px";
+    sh.style.maxHeight = Math.max(220, Math.round(vv.height) - 12) + "px";
+  }else{
+    bd.style.bottom = "";
+    sh.style.maxHeight = "";
+  }
 }
 if(window.visualViewport){
-  window.visualViewport.addEventListener("resize", ()=>{
-    if(document.getElementById("backdrop").classList.contains("show")) fitSheet();
-  });
+  const onVV = ()=>{ if(document.getElementById("backdrop").classList.contains("show")) fitSheet(); };
+  window.visualViewport.addEventListener("resize", onVV);
+  window.visualViewport.addEventListener("scroll", onVV);
 }
-function hideSheet(){ document.getElementById("backdrop").classList.remove("show"); }
+function hideSheet(){
+  const bd = document.getElementById("backdrop");
+  bd.classList.remove("show");
+  bd.style.bottom = "";                     // キーボード用のずらしを元に戻す
+  document.getElementById("sheet").style.maxHeight = "";
+}
 document.getElementById("backdrop").onclick = (e)=>{ if(e.target.id==="backdrop") hideSheet(); };
 
 /* ============================================================
@@ -2653,6 +2681,15 @@ function openGoalSheet(){
 }
 
 /* 期間集計（日=直近21件 / 週=週平均 / 月=月平均、いずれも直近まで） */
+/* グラフの色はCSSの変数から取る（テーマを変えても線と塗りがズレない） */
+function cssVar(name, fallback){
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+const C_PRI   = cssVar("--pri",   "#FFA83C");
+const C_GREEN = cssVar("--green", "#3DDC8B");
+const C_BG    = cssVar("--bg",    "#0B0F16");
+
 function weekKey(ds){
   const p=ds.split("-").map(Number); const d=new Date(p[0],p[1]-1,p[2]);
   const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow);
@@ -2711,7 +2748,7 @@ function renderWeightChart(){
   let dots="";
   series.forEach((d,i)=>{
     const last = i===n-1;
-    dots += '<circle cx="'+x(i).toFixed(1)+'" cy="'+y(d.kg).toFixed(1)+'" r="'+(last?4:2.5)+'" fill="#9D4EE8"'+(last?' stroke="#0D0A12" stroke-width="2"':'')+'/>';
+    dots += '<circle cx="'+x(i).toFixed(1)+'" cy="'+y(d.kg).toFixed(1)+'" r="'+(last?4:2.5)+'" fill="'+C_PRI+'"'+(last?' stroke="'+C_BG+'" stroke-width="2"':'')+'/>';
   });
 
   // 目標ライン
@@ -2719,19 +2756,19 @@ function renderWeightChart(){
   if(goal!=null){
     const gy = y(goal).toFixed(1);
     goalLine =
-      '<line x1="'+PX+'" y1="'+gy+'" x2="'+(W-PX)+'" y2="'+gy+'" stroke="#35D07F" stroke-width="1.5" stroke-dasharray="5 4"/>'+
-      '<text x="'+(W-PX)+'" y="'+(y(goal)-5).toFixed(1)+'" text-anchor="end" fill="#35D07F" font-size="11" font-weight="700">目標 '+goal+'</text>';
+      '<line x1="'+PX+'" y1="'+gy+'" x2="'+(W-PX)+'" y2="'+gy+'" stroke="'+C_GREEN+'" stroke-width="1.5" stroke-dasharray="5 4"/>'+
+      '<text x="'+(W-PX)+'" y="'+(y(goal)-5).toFixed(1)+'" text-anchor="end" fill="'+C_GREEN+'" font-size="11" font-weight="700">'+t("x","目標","Goal")+' '+goal+'</text>';
   }
 
   wrap.innerHTML =
     '<svg class="chart" viewBox="0 0 '+W+' '+H+'" style="height:'+H+'px">'+
       '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
         '<stop offset="0%" stop-color="rgba(255,168,60,.45)"/>'+
-        '<stop offset="100%" stop-color="rgba(157,78,232,0)"/>'+
+        '<stop offset="100%" stop-color="rgba(255,168,60,0)"/>'+
       '</linearGradient></defs>'+
       '<path d="'+area+'" fill="url(#wg)"/>'+
       goalLine+
-      '<path d="'+line+'" fill="none" stroke="#9D4EE8" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>'+
+      '<path d="'+line+'" fill="none" stroke="'+C_PRI+'" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>'+
       dots+
     '</svg>';
 
