@@ -983,7 +983,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.04";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.04b";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -3671,6 +3671,44 @@ function initBackupReminder(){
   };
 }
 
+/* 引き継ぎの結果を、消えない画面で知らせる */
+function showImportResult({days, exWithRec, wN, merged, lastEx, lastDate}){
+  const sheet = document.getElementById("sheet");
+  if(!days){
+    sheet.innerHTML =
+      '<h2>'+t("x","読み込みました","Imported")+'</h2>'+
+      '<p class="set-note">'+t("x",
+        "このファイルには筋トレの記録が入っていませんでした。書き出したときの端末で、もう一度書き出してみてください。",
+        "This file contained no training records. Try exporting again from the original device.")+'</p>'+
+      '<div class="sheet-btns"><button class="btn ghost" id="imp-close">'+t("x","閉じる","Close")+'</button></div>';
+    showSheet();
+    document.getElementById("imp-close").onclick = hideSheet;
+    return;
+  }
+  sheet.innerHTML =
+    '<h2>'+t("x","記録を移しました","Records imported")+'</h2>'+
+    '<div class="hist-best">'+
+      '<div class="hb-l">'+t("x","引き継いだ記録","Imported")+'</div>'+
+      '<div class="hb-v num">'+days+'<span class="hb-u">'+t("x","日分","days")+'</span></div>'+
+      '<div class="hb-d">'+t("x","種目 ","")+exWithRec+t("x","件 / 体重 "," exercises / ")+wN+t("x","件","weigh-ins")+
+        (merged>0 ? t("x","　重複マシン ","　merged ")+merged+t("x","件を統合","dupes") : '')+'</div>'+
+    '</div>'+
+    (lastEx
+      ? '<p class="set-note">'+t("x","いちばん新しい記録は ","Latest record: ")+'<b>'+escapeHtml(exName(lastEx.name))+'</b>'+
+        t("x","（","（")+fmtDateFull(lastDate)+t("x","）です。この種目を開いておきました。","）")+'</p>'
+      : '')+
+    '<p class="set-note">'+t("x",
+      "トレーニング画面は<b>今日の分</b>を表示しています。今日はまだ記録していないので空ですが、記録は消えていません。過去の記録は日付を切り替えるか、種目ごとの<b>「これまでの記録を見る」</b>から確認できます。",
+      "The training screen shows <b>today</b>. It is empty because you have not logged today yet — your records are safe. Use the date arrows or <b>View history</b> on each exercise.")+'</p>'+
+    '<div class="sheet-btns">'+
+      '<button class="btn ghost" id="imp-close">'+t("x","閉じる","Close")+'</button>'+
+      (lastEx ? '<button class="btn primary" id="imp-hist">'+t("x","記録を見る","View records")+'</button>' : '')+
+    '</div>';
+  showSheet();
+  document.getElementById("imp-close").onclick = hideSheet;
+  if(lastEx) document.getElementById("imp-hist").onclick = ()=> openHistory(lastEx.id);
+}
+
 function importData(file){
   const note = document.getElementById("bk-note");
   const fr = new FileReader();
@@ -3713,17 +3751,40 @@ function importData(file){
     /* 古いバックアップでも今の形式に合わせ直す（店舗ごとの重複はここで1つにまとまる） */
     const beforeEx = state.exercises.length;
     migratePresets(); migrateSingleGym(); pruneEmptySessions();
-    const cur = state.exercises.find(e=> e.id===state.ui.currentExId);
-    if(!cur){
+
+    /* 読み込んだ直後に「記録が無い種目」が開いていると、
+       画面に「まだ記録がありません」と出て、移せていないように見えてしまう。
+       いちばん新しい記録がある種目を開いた状態にする。 */
+    let lastEx = null, lastDate = "";
+    state.exercises.forEach(ex=>{
+      (state.sessions[ex.id]||[]).forEach(sv=>{
+        if(sv && sv.date && hasData(sv) && sv.date > lastDate){ lastDate = sv.date; lastEx = ex; }
+      });
+    });
+    if(lastEx){
+      state.ui.currentExId = lastEx.id;
+      state.ui.currentArea = lastEx.cat;
+    }else if(!state.exercises.find(e=> e.id===state.ui.currentExId)){
       const first = state.exercises[0];
       state.ui.currentExId = first ? first.id : null;
       state.ui.currentArea = first ? first.cat : null;
     }
+
     let days = {};
     Object.keys(state.sessions).forEach(k=> (state.sessions[k]||[]).forEach(x=>{ if(x && x.date && hasData(x)) days[x.date]=1; }));
+    const exWithRec = state.exercises.filter(e=> (state.sessions[e.id]||[]).some(hasData)).length;
     const merged = beforeEx - state.exercises.length;
-    save(); hideSheet(); renderTrain(); renderWeight();
-    toast("記録 "+Object.keys(days).length+"日分を移しました"+(merged>0 ? "（重複マシン "+merged+" 件を統合）" : ""));
+    state.ui.lastExport = state.ui.lastExport || Date.now();   // 移した直後に控えを促さない
+    save(); renderTrain(); renderWeight();
+
+    /* 結果はトーストではなくシートで見せる。
+       トーストは数秒で消えるので「移せた証拠」にならず、
+       今日の画面が空なだけで「消えた」と誤解されてしまう。 */
+    showImportResult({
+      days: Object.keys(days).length, exWithRec: exWithRec,
+      wN: (state.weights||[]).length, merged: merged,
+      lastEx: lastEx, lastDate: lastDate
+    });
   };
   fr.onerror = ()=>{ if(note) note.innerHTML = '<b style="color:var(--red)">ファイルを読めませんでした。</b>'; };
   fr.readAsText(file);
