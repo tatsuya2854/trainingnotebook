@@ -8,7 +8,7 @@
     "ios:sync": "npm run build && npx cap sync ios",
     "ios:open": "npx cap open ios",
     "worker:dev": "npm --prefix worker run dev",
-    "worker:deploy": "npm run build && npm --prefix worker run deploy"
+    "worker:deploy": "npm --prefix worker run deploy"
   },
   "devDependencies": {
     "@capacitor/app": "^8.1.1",

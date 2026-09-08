@@ -4,16 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build; wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "stripe:setup": "node scripts/stripe-setup.mjs",
-    "kv:create": "wrangler kv namespace create ENTITLEMENTS"
+    "stripe:setup": "node scripts/stripe-setup.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
+    "stripe": "^22.6.1"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.124.0",
     "@cloudflare/workers-types": "^5.20260908.1",
-    "stripe": "^22.6.1",
     "typescript": "^7.0.2",
     "wrangler": "^4.130.0"
   }

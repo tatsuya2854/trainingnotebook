@@ -53,10 +53,6 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build www/
-        if: steps.check.outputs.ready == 'true'
-        run: node scripts/build-www.mjs
-
       - name: Install worker deps
         if: steps.check.outputs.ready == 'true'
         working-directory: worker
@@ -67,22 +63,10 @@ jobs:
         working-directory: worker
         run: npm run typecheck
 
-      - name: Ensure KV namespace
+      - name: Build (www/ + KV namespace)
         if: steps.check.outputs.ready == 'true'
         working-directory: worker
-        run: |
-          if grep -q REPLACE_WITH_KV_NAMESPACE_ID wrangler.toml; then
-            ID=$(npx wrangler kv namespace list | node -e '
-              let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                const start=s.indexOf("[");const arr=start>=0?JSON.parse(s.slice(start)):[];
-                const hit=arr.find(x=>/ENTITLEMENTS$/.test(x.title));process.stdout.write(hit?hit.id:"");});')
-            if [ -z "$ID" ]; then
-              ID=$(npx wrangler kv namespace create ENTITLEMENTS 2>&1 | grep -oE '[a-f0-9]{32}' | head -1)
-            fi
-            if [ -z "$ID" ]; then echo "KV namespace を作れませんでした"; exit 1; fi
-            sed -i "s/REPLACE_WITH_KV_NAMESPACE_ID/$ID/" wrangler.toml
-            echo "KV namespace: $ID"
-          fi
+        run: npm run build
 
       - name: Deploy
         if: steps.check.outputs.ready == 'true'
