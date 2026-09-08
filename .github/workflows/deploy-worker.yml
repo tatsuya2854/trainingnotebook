@@ -1,52 +1,140 @@
-# main に push したら Worker（API + www/ の静的配信）を自動デプロイする。
-# 必要な GitHub Secrets（リポジトリ → Settings → Secrets and variables → Actions）:
-#   CLOUDFLARE_API_TOKEN   Cloudflare の API トークン（Workers 編集 + KV 編集の権限）
-#   CLOUDFLARE_ACCOUNT_ID  Cloudflare のアカウント ID
-# どちらかが未設定なら何もしないで終わる（失敗にはしない）。
+# Worker（API + www/ の静的配信）を GitHub から全自動でデプロイする。
+#
+# 必要な GitHub Secrets（リポジトリ → Settings → Secrets and variables → Actions → New repository secret）
+#   必須
+#     CLOUDFLARE_API_TOKEN     Cloudflare → My Profile → API Tokens → Create Token →
+#                              テンプレート「Edit Cloudflare Workers」で作る（Workers Scripts:Edit と Workers KV Storage:Edit）
+#     CLOUDFLARE_ACCOUNT_ID    Cloudflare ダッシュボード右側の Account ID
+#     ANTHROPIC_API_KEY        Claude コンソール → API Keys
+#   任意（入れた分だけ有効になる）
+#     STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / REVENUECAT_API_KEY / REVENUECAT_WEBHOOK_AUTH
+# 任意の Variables（同じ画面の Variables タブ）
+#     STRIPE_PRICE_PRO / STRIPE_PRICE_MAX / STRIPE_PRICE_TRAINER / APP_URL / AI_MODEL / ALLOWED_ORIGINS
+#
+# KV の名前空間は初回に自動で作って wrangler.toml に差し込む。手で id を貼る必要はない。
+# Cloudflare の Secrets が無いときは何もしないで終わる（失敗にはしない）。
 name: Deploy Worker
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths:
       - "index.html"
+      - "privacy.html"
+      - "terms.html"
       - "worker/**"
       - "scripts/**"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
 
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Check secrets
         id: check
         run: |
-          if [ -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] && [ -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Cloudflare の Secrets が未設定なのでデプロイをスキップします"
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID が未設定なのでデプロイをスキップしました"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Build www/
         if: steps.check.outputs.ready == 'true'
         run: node scripts/build-www.mjs
+
       - name: Install worker deps
         if: steps.check.outputs.ready == 'true'
         working-directory: worker
         run: npm ci
+
       - name: Typecheck
         if: steps.check.outputs.ready == 'true'
         working-directory: worker
         run: npm run typecheck
+
+      - name: Ensure KV namespace
+        if: steps.check.outputs.ready == 'true'
+        working-directory: worker
+        run: |
+          if grep -q REPLACE_WITH_KV_NAMESPACE_ID wrangler.toml; then
+            ID=$(npx wrangler kv namespace list | node -e '
+              let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const start=s.indexOf("[");const arr=start>=0?JSON.parse(s.slice(start)):[];
+                const hit=arr.find(x=>/ENTITLEMENTS$/.test(x.title));process.stdout.write(hit?hit.id:"");});')
+            if [ -z "$ID" ]; then
+              ID=$(npx wrangler kv namespace create ENTITLEMENTS 2>&1 | grep -oE '[a-f0-9]{32}' | head -1)
+            fi
+            if [ -z "$ID" ]; then echo "KV namespace を作れませんでした"; exit 1; fi
+            sed -i "s/REPLACE_WITH_KV_NAMESPACE_ID/$ID/" wrangler.toml
+            echo "KV namespace: $ID"
+          fi
+
       - name: Deploy
         if: steps.check.outputs.ready == 'true'
         working-directory: worker
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler deploy
+          V_PRO: ${{ vars.STRIPE_PRICE_PRO }}
+          V_MAX: ${{ vars.STRIPE_PRICE_MAX }}
+          V_TRAINER: ${{ vars.STRIPE_PRICE_TRAINER }}
+          V_APP_URL: ${{ vars.APP_URL }}
+          V_MODEL: ${{ vars.AI_MODEL }}
+          V_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+        run: |
+          ARGS=""
+          [ -n "$V_PRO" ]     && ARGS="$ARGS --var STRIPE_PRICE_PRO:$V_PRO"
+          [ -n "$V_MAX" ]     && ARGS="$ARGS --var STRIPE_PRICE_MAX:$V_MAX"
+          [ -n "$V_TRAINER" ] && ARGS="$ARGS --var STRIPE_PRICE_TRAINER:$V_TRAINER"
+          [ -n "$V_APP_URL" ] && ARGS="$ARGS --var APP_URL:$V_APP_URL"
+          [ -n "$V_MODEL" ]   && ARGS="$ARGS --var AI_MODEL:$V_MODEL"
+          [ -n "$V_ORIGINS" ] && ARGS="$ARGS --var ALLOWED_ORIGINS:$V_ORIGINS"
+          set -o pipefail
+          npx wrangler deploy $ARGS | tee deploy.log
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "### デプロイ完了 🚀" >> "$GITHUB_STEP_SUMMARY"
+          echo "- アプリ / API：$URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 動作確認：$URL/api/health" >> "$GITHUB_STEP_SUMMARY"
+        id: deploy
+
+      - name: Sync secrets to Worker
+        if: steps.check.outputs.ready == 'true'
+        working-directory: worker
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+          REVENUECAT_WEBHOOK_AUTH: ${{ secrets.REVENUECAT_WEBHOOK_AUTH }}
+        run: |
+          for NAME in ANTHROPIC_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET REVENUECAT_API_KEY REVENUECAT_WEBHOOK_AUTH; do
+            VAL="${!NAME}"
+            if [ -n "$VAL" ]; then
+              printf '%s' "$VAL" | npx wrangler secret put "$NAME" >/dev/null && echo "secret $NAME: 設定しました"
+            else
+              echo "secret $NAME: 未設定（スキップ）"
+            fi
+          done
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::ANTHROPIC_API_KEY が未設定です。AI相談と📷これ何？はまだ動きません"
+          fi
+
+      - name: Health check
+        if: steps.check.outputs.ready == 'true' && steps.deploy.outputs.url != ''
+        run: |
+          sleep 5
+          curl -sS "${{ steps.deploy.outputs.url }}/api/health" | tee -a "$GITHUB_STEP_SUMMARY"

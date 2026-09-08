@@ -21,34 +21,42 @@ Web はカード（Stripe Checkout）、iOS は App 内課金（RevenueCat）。
 ## 1. サーバー（Cloudflare Worker）を立てる — 必須
 
 AI も決済もこれが無いと動かない。Cloudflare は無料枠で足りる。
+**やることは GitHub に 3 つの Secret を入れるだけ。** あとは GitHub Actions が KV 作成からデプロイまで全部やる。
 
-```bash
-cd worker
-npm install
-npx wrangler login                      # ブラウザが開く
-npx wrangler kv namespace create ENTITLEMENTS
-#   → 出てきた id を wrangler.toml の [[kv_namespaces]] id に貼る
+1. Cloudflare のアカウントを作る（無料）：https://dash.cloudflare.com/sign-up
+2. **Account ID**：ダッシュボードの Workers & Pages を開くと右側に出る
+3. **API Token**：右上のプロフィール → My Profile → API Tokens → Create Token →
+   テンプレート「**Edit Cloudflare Workers**」→ Continue → Create Token（1 回しか表示されないのでコピー）
+4. GitHub のリポジトリ → **Settings → Secrets and variables → Actions → New repository secret** で 3 つ入れる：
 
-npx wrangler secret put ANTHROPIC_API_KEY   # Claude コンソール → API Keys で作ったキー
-cd .. && npm run worker:deploy              # www/ を作って Worker をデプロイ
-```
+   | Secret 名 | 値 |
+   |---|---|
+   | `CLOUDFLARE_ACCOUNT_ID` | 2 の Account ID |
+   | `CLOUDFLARE_API_TOKEN` | 3 のトークン |
+   | `ANTHROPIC_API_KEY` | Claude コンソール → API Keys で作ったキー（`sk-ant-...`） |
 
-デプロイ後に出る URL（`https://trainingnotebook.<アカウント>.workers.dev`）が
-**アプリの配信 URL 兼 API の URL**。ここを開けば AI相談がもう動く。
+5. GitHub → **Actions → Deploy Worker → Run workflow** を押す（次に push したときも自動で走る）
+6. 終わったら Actions のログ末尾の「デプロイ完了」に URL が出る。
+   `https://trainingnotebook.<アカウント>.workers.dev` — これが**アプリの配信 URL 兼 API の URL**。
+   開けば AI相談と 📷 これ何？ がもう動く。`/api/health` で `"ai":true` なら OK
 
-- 確認：`https://.../api/health` を開いて `"ai":true` なら OK
 - GitHub Pages で配り続けたいなら、`index.html` の `BACKEND_URL` に上の URL を入れる（iOS アプリでも必須）
 - **📷 これ何？**（マシンの写真から名前・使い方を判定）も同じ Worker の `/api/vision` で動く。
   上限は AI相談と別枠でフリー月10回・プロ月60回・マックス以上は無制限（`worker/src/index.ts` の `VISION_LIMIT`）。
   写真1枚あたり ¥3〜5。
-- モデルは `wrangler.toml` の `AI_MODEL`。既定は `claude-opus-5`。
-  1 回の相談はだいたい ¥3〜5。コンソールの ¥3,000 で 600〜1,000 回くらい。
-  安くしたいなら `claude-sonnet-5`（半額以下）。変えたら `npm run worker:deploy`
+- モデルは既定で `claude-opus-5`。1 回の相談はだいたい ¥3〜5。コンソールの ¥3,000 で 600〜1,000 回くらい。
+  安くしたいなら GitHub の **Variables** に `AI_MODEL` = `claude-sonnet-5` を入れて Run workflow（半額以下）
+- Stripe や RevenueCat の鍵も同じ画面の Secrets に入れれば、次のデプロイで Worker に同期される
+  （`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `REVENUECAT_API_KEY` / `REVENUECAT_WEBHOOK_AUTH`）。
+  価格 ID や戻り先 URL は Variables（`STRIPE_PRICE_PRO` / `STRIPE_PRICE_MAX` / `STRIPE_PRICE_TRAINER` / `APP_URL`）
 
-### GitHub からの自動デプロイ（任意）
-リポジトリ → Settings → Secrets and variables → Actions に
-`CLOUDFLARE_API_TOKEN`（Workers 編集 + KV 編集の権限）と `CLOUDFLARE_ACCOUNT_ID` を入れると、
-main への push で `.github/workflows/deploy-worker.yml` が勝手にデプロイする。
+### 手元の Mac からデプロイしたいとき（任意）
+```bash
+cd worker && npm install && npx wrangler login
+npx wrangler kv namespace create ENTITLEMENTS   # 出た id を wrangler.toml に貼る
+npx wrangler secret put ANTHROPIC_API_KEY
+cd .. && npm run worker:deploy
+```
 
 ---
 
@@ -60,16 +68,13 @@ main への push で `.github/workflows/deploy-worker.yml` が勝手にデプロ
    cd worker
    STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup
    ```
-   出力された `STRIPE_PRICE_PRO / MAX / TRAINER` を `wrangler.toml` の `[vars]` に貼る
-3. 鍵を Worker に入れる：
-   ```bash
-   npx wrangler secret put STRIPE_SECRET_KEY
-   ```
+   出力された `STRIPE_PRICE_PRO / MAX / TRAINER` を GitHub の **Variables** に入れる（手元デプロイなら `wrangler.toml` の `[vars]`）
+3. 鍵を GitHub の **Secrets** に `STRIPE_SECRET_KEY` として入れる（手元なら `npx wrangler secret put STRIPE_SECRET_KEY`）
 4. Webhook を登録：Stripe → 開発者 → Webhook → エンドポイント追加
    - URL：`https://<WorkerのURL>/api/webhooks/stripe`
    - イベント：`checkout.session.completed`、`customer.subscription.created / updated / deleted / paused / resumed`
-   - 署名シークレット `whsec_...` を `npx wrangler secret put STRIPE_WEBHOOK_SECRET`
-5. `wrangler.toml` の `APP_URL` に、アプリを配っている URL（決済後に戻る先）を入れて `npm run worker:deploy`
+   - 署名シークレット `whsec_...` を Secrets に `STRIPE_WEBHOOK_SECRET` として入れる
+5. Variables の `APP_URL` に、アプリを配っている URL（決済後に戻る先）を入れて Actions → Deploy Worker → Run workflow
 6. カスタマーポータル（解約・カード変更）を有効化：Stripe → 設定 → Billing → カスタマーポータル → 有効化
 
 テストカード `4242 4242 4242 4242` で「プロにする」→ 戻ってきたら設定 → プランが「プロ」になれば完成。
@@ -115,9 +120,9 @@ RevenueCat：
 3. **Entitlements** を作る。識別子はそれぞれ `pro` / `max` / `trainer`（サーバーがこの名前で判定する）。各 Entitlement に対応する製品を付ける
 4. Offerings → default に 3 つの Package を追加
 5. API Keys → **Public app-specific key（`appl_...`）** を `index.html` の `RC_CONFIG.iosApiKey` に貼る
-6. API Keys → **Secret key（`sk_...`）** を Worker に：`npx wrangler secret put REVENUECAT_API_KEY`
+6. API Keys → **Secret key（`sk_...`）** を GitHub Secrets に `REVENUECAT_API_KEY` として入れる
 7. Integrations → Webhooks → URL `https://<WorkerのURL>/api/webhooks/revenuecat`、Authorization header に好きな合言葉。
-   同じ文字列を `npx wrangler secret put REVENUECAT_WEBHOOK_AUTH`
+   同じ文字列を GitHub Secrets に `REVENUECAT_WEBHOOK_AUTH` として入れて Run workflow
 
 `npm run ios:sync` し直して、Sandbox テスターで購入 → 設定 → プランが変われば完成。
 
@@ -140,7 +145,7 @@ RevenueCat：
 | 症状 | 見るところ |
 |---|---|
 | AI が「未設定」 | `index.html` の `BACKEND_URL`。同じ Worker から配信しているなら空で OK |
-| AI が「API キーが入っていません」 | `npx wrangler secret put ANTHROPIC_API_KEY` |
+| AI が「API キーが入っていません」 | GitHub Secrets の `ANTHROPIC_API_KEY` を入れて Run workflow |
 | 「決済はまだ準備中」 | `STRIPE_SECRET_KEY` と `STRIPE_PRICE_*` |
 | 支払ったのにフリーのまま | Stripe の Webhook URL と `STRIPE_WEBHOOK_SECRET`。戻り URL に `?checkout=success` が付いているか |
 | iOS で「準備ができていません」 | `RC_CONFIG.iosApiKey` と、Xcode の In-App Purchase Capability |
