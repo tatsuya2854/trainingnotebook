@@ -1,0 +1,34 @@
+# Cloudflare Worker の設定。デプロイ： npm run deploy（親の npm run worker:deploy でも可）
+name = "trainingnotebook"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# www/ をそのまま配信する（GitHub Pages を使い続けるならこのブロックは消してもよい）
+[assets]
+directory = "../www"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# プラン・回数の保存先。`npx wrangler kv namespace create ENTITLEMENTS` で作った id を入れる
+[[kv_namespaces]]
+binding = "ENTITLEMENTS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+AI_MODEL = "claude-opus-5"          # 安くしたいなら "claude-sonnet-5"
+AI_EFFORT = "medium"                # low / medium / high
+AI_MAX_TOKENS = "2000"
+APP_URL = ""                        # 例 "https://tatsuya2854.github.io/trainingnotebook"（空なら Worker 自身のURL）
+ALLOWED_ORIGINS = "*"               # 例 "https://tatsuya2854.github.io,https://trainingnotebook.xxx.workers.dev"
+STRIPE_PRICE_PRO = ""               # npm run stripe:setup が出力する price_...
+STRIPE_PRICE_MAX = ""
+STRIPE_PRICE_TRAINER = ""
+FIREBASE_PROJECT_ID = ""            # Firebase 同期を使うときだけ
+
+# 秘密は wrangler secret put で入れる（ファイルには書かない）
+#   ANTHROPIC_API_KEY        Anthropic コンソールの API キー
+#   STRIPE_SECRET_KEY        sk_live_... / sk_test_...
+#   STRIPE_WEBHOOK_SECRET    whsec_...
+#   REVENUECAT_WEBHOOK_AUTH  RevenueCat の Webhook に設定する任意の合言葉
+#   REVENUECAT_API_KEY       RevenueCat の Secret API key（sk_...）

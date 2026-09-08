@@ -1,0 +1,13 @@
+{
+  "appId": "jp.trainingnotebook.app",
+  "appName": "training support",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#080B11",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "server": {
+    "iosScheme": "capacitor"
+  }
+}

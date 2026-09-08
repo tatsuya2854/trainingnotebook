@@ -1,0 +1,21 @@
+{
+  "name": "trainingnotebook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "筋トレ記録アプリ（Web / iOS）",
+  "scripts": {
+    "build": "node scripts/build-www.mjs",
+    "ios:sync": "npm run build && npx cap sync ios",
+    "ios:open": "npx cap open ios",
+    "worker:dev": "npm --prefix worker run dev",
+    "worker:deploy": "npm run build && npm --prefix worker run deploy"
+  },
+  "devDependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
+    "@revenuecat/purchases-capacitor": "^13.5.0"
+  }
+}

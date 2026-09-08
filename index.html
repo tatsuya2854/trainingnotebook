@@ -387,6 +387,7 @@
 
   /* ---------- Backup ---------- */
   .bk-btns{display:flex;gap:10px;margin-bottom:12px;}
+  .set-note a{color:var(--pri);font-weight:700;text-decoration:underline;}
   .bk-btns .btn{height:50px;font-size:15px;}
 
   /* ---------- Memo ---------- */
@@ -983,7 +984,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.04b";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.08";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -1168,6 +1169,7 @@ function load(){
     aiUsage: null,
     aiChat: [],
     account: null,
+    deviceKey: null,
     weightGoal: null,
     presetsV: 0
   };
@@ -3436,7 +3438,7 @@ function openSettingsSheet(focusKey){
       '<button class="lang-b'+(LANG!=="en"?" active":"")+'" data-l="ja">日本語</button>'+
       '<button class="lang-b'+(LANG==="en"?" active":"")+'" data-l="en">English</button>'+
     '</div>'+
-    aiKeyBlock()+
+    aiConnBlock()+
     '<div class="set-row" id="set-more-row">'+
       '<div class="txt"><b>その他の設定</b><span>セットの記録・タイマーの音・バックアップ</span></div>'+
       '<button class="plan-buy ghost" id="set-more" style="width:auto;padding:0 14px;margin:0;height:40px">開く</button>'+
@@ -3736,7 +3738,8 @@ function importData(file){
       "※ いまこの端末にある記録は置き換わります。\n続けますか？")) return;
 
     /* アカウント・プラン・AIの利用状況は、この端末のものを残す（記録だけ入れ替える） */
-    const keep = {account: state.account, plan: state.plan, aiUsage: state.aiUsage, aiChat: state.aiChat};
+    const keep = {account: state.account, plan: state.plan, aiUsage: state.aiUsage, aiChat: state.aiChat,
+                  deviceKey: (d.deviceKey && /^[a-f0-9]{64}$/.test(d.deviceKey)) ? d.deviceKey : state.deviceKey};
 
     state = d;
     if(!state.ui) state.ui = {};
@@ -3745,6 +3748,7 @@ function importData(file){
     state.plan    = keep.plan || "free";
     state.aiUsage = keep.aiUsage || null;
     state.aiChat  = keep.aiChat || [];
+    state.deviceKey = keep.deviceKey || null;   // 購入を結びつける鍵。バックアップ側にあればそちらを採用する
     delete state.gymV;                       // 旧データは必ず統合し直す
     if(!save()){ if(note) note.innerHTML = '<b style="color:var(--red)">保存できませんでした。</b>容量が足りない可能性があります。'; return; }
 
@@ -3945,10 +3949,18 @@ function renderStreak(){
 }
 
 /* ============================================================
-   料金プラン
+   料金プラン・決済
    ・記録まわりは無料のまま。AI相談と複数クライアントだけ有料。
+   ・プランの正体はサーバー（worker/）が持つ。ここは表示と購入の入口だけ。
+   ・Web：Stripe Checkout（クレジットカード）
+   ・iOS アプリ：App内課金（RevenueCat 経由）。App Store の規約で Web 決済は使えない
    ============================================================ */
-const CHECKOUT_URLS = { pro:"", max:"", trainer:"" };   // Stripe等の決済リンクを入れる
+const BACKEND_URL = "";                 // 例 "https://trainingnotebook.xxx.workers.dev"。空なら配信元と同じサーバーを使う
+const RC_CONFIG   = { iosApiKey: "" };  // RevenueCat の Public SDK key（appl_...）。iOS アプリの課金に必要
+const RC_PRODUCTS = { pro:"ts_pro_monthly", max:"ts_max_monthly", trainer:"ts_trainer_monthly" };  // App Store Connect の製品ID
+const LEGAL = { terms:"terms.html", privacy:"privacy.html" };
+const NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform==="function" && window.Capacitor.isNativePlatform());
+
 const PLANS = {
   free:    {id:"free",    name:"フリー",       price:"¥0",        ai:3,  clients:1,
             feats:["記録・カレンダー・体重・メニューは全部無料","AI相談は<b>お試し月3回</b>","クライアントは自分ひとり"]},
@@ -3972,6 +3984,143 @@ function aiLeft(){ const l = aiLimit(); return l < 0 ? Infinity : Math.max(0, l 
 function aiConsume(){ const u = aiMonth(); u.count++; save(); }
 function clientLimit(){ return plan().clients; }
 
+/* ---------- サーバーとの接続 ----------
+   ・端末ごとに長いランダムな鍵を作り、それを合言葉にサーバーへ問い合わせる
+   ・鍵はバックアップにも入るので、書き出し→読み込みで購入も一緒に移る */
+function backendUrl(){
+  let u = BACKEND_URL;
+  try{ u = localStorage.getItem("gymlog.backend") || u; }catch(e){}
+  if(u) return u.replace(/\/+$/,"");
+  if(NATIVE || location.protocol==="file:" || /github\.io$/.test(location.hostname)) return "";
+  return location.origin;           // Worker から配信されているときは同じ場所に API がある
+}
+function hasBackend(){ return !!backendUrl(); }
+function deviceKey(){
+  if(!state.deviceKey || !/^[a-f0-9]{64}$/.test(state.deviceKey)){
+    const a = new Uint8Array(32); crypto.getRandomValues(a);
+    state.deviceKey = Array.from(a, b=> b.toString(16).padStart(2,"0")).join("");
+    save();
+  }
+  return state.deviceKey;
+}
+function identity(){ return signedIn() ? "uid:"+state.account.uid : "dev:"+deviceKey(); }
+async function api(path, opts){
+  const base = backendUrl();
+  if(!base) throw new Error("no-backend");
+  opts = opts || {};
+  const headers = Object.assign({"content-type":"application/json", "x-device-key": deviceKey()}, opts.headers||{});
+  if(signedIn() && cloudAuth && cloudAuth.currentUser){
+    try{ headers["authorization"] = "Bearer "+ await cloudAuth.currentUser.getIdToken(); }catch(e){}
+  }
+  const r = await fetch(base+path, Object.assign({}, opts, {headers}));
+  let d = null; try{ d = await r.json(); }catch(e){}
+  if(!r.ok){
+    const err = new Error((d && d.error) || ("http-"+r.status));
+    err.status = r.status; err.data = d; throw err;
+  }
+  return d;
+}
+/* サーバーが言うプランと回数を、この端末の表示に反映する */
+function applyMe(d){
+  if(!d || !PLANS[d.plan]) return;
+  state.plan = d.plan;
+  state.aiUsage = {month: todayStr().slice(0,7), count: (d.ai && d.ai.used) || 0};
+  state._srv = d;
+  save();
+  renderClientBar();
+  if(document.getElementById("view-ai") && document.getElementById("view-ai").classList.contains("active")) renderAI();
+}
+async function refreshMe(){
+  if(!hasBackend()) return null;
+  try{
+    const d = NATIVE && RC_CONFIG.iosApiKey
+      ? await api("/api/rc/refresh", {method:"POST"}).catch(()=> api("/api/me"))
+      : await api("/api/me");
+    applyMe(d); return d;
+  }catch(e){ console.warn(e); return null; }
+}
+/* Stripe から戻ってきたとき（?checkout=success&session_id=...） */
+async function handleCheckoutReturn(){
+  const q = new URLSearchParams(location.search);
+  const c = q.get("checkout");
+  const backend = q.get("backend");
+  if(backend){ try{ localStorage.setItem("gymlog.backend", backend); }catch(e){} }
+  if(!c && !backend) return;
+  history.replaceState(null, "", location.pathname);
+  if(c==="cancel"){ toast("お支払いをキャンセルしました"); return; }
+  const sid = q.get("session_id");
+  if(c==="success" && sid && hasBackend()){
+    try{
+      const d = await api("/api/checkout/confirm?session_id="+encodeURIComponent(sid));
+      applyMe(d);
+      toast(d.pending ? "お支払いを確認中です。少し待ってから開き直してください" : plan().name+"プランになりました！");
+      renderTrain();
+    }catch(e){ console.warn(e); toast("お支払いの確認ができませんでした。設定 → プランで確認してください"); }
+  }
+}
+async function initBackend(){
+  await handleCheckoutReturn();
+  if(NATIVE) await rcInit();
+  await refreshMe();
+}
+
+/* ---------- App内課金（iOS・RevenueCat） ---------- */
+let Purchases = null, rcReady = false;
+async function rcInit(){
+  if(!NATIVE || !RC_CONFIG.iosApiKey) return false;
+  if(rcReady) return true;
+  try{
+    Purchases = window.Capacitor.registerPlugin("Purchases");
+    await Purchases.configure({ apiKey: RC_CONFIG.iosApiKey, appUserID: identity() });
+    rcReady = true; return true;
+  }catch(e){ console.warn(e); return false; }
+}
+function rcPlanFrom(info){
+  const act = (info && info.entitlements && info.entitlements.active) || {};
+  let p = "free"; PLAN_ORDER.forEach(id=>{ if(act[id]) p = id; }); return p;
+}
+async function rcApply(info){
+  const p = rcPlanFrom(info);
+  if(p!=="free"){ state.plan = p; save(); }     // まず端末で反映（サーバーが遅くても待たせない）
+  try{ applyMe(await api("/api/rc/refresh", {method:"POST"})); }catch(e){ console.warn(e); }
+}
+function rcFindPackage(off, id){
+  const want = RC_PRODUCTS[id];
+  const all = [];
+  if(off && off.current) all.push(off.current);
+  if(off && off.all) Object.keys(off.all).forEach(k=> all.push(off.all[k]));
+  for(const o of all){
+    const pk = (o.availablePackages||[]).find(p=> p.product && (p.product.identifier===want || p.identifier===id));
+    if(pk) return pk;
+  }
+  return null;
+}
+async function rcPurchase(id){
+  if(!(await rcInit())){ toast("App内課金の準備ができていません"); return; }
+  try{
+    const off = await Purchases.getOfferings();
+    const pk = rcFindPackage(off, id);
+    if(!pk){ toast("この商品はまだ App Store に登録されていません"); return; }
+    const res = await Purchases.purchasePackage({ aPackage: pk });
+    await rcApply(res.customerInfo);
+    hideSheet(); renderClientBar(); renderTrain();
+    toast(plan().name+"プランになりました！");
+  }catch(e){
+    if(e && (e.userCancelled || /cancel/i.test(e.message||""))) return;
+    console.warn(e); toast("購入できませんでした");
+  }
+}
+async function rcRestore(){
+  if(!(await rcInit())){ toast("App内課金の準備ができていません"); return; }
+  try{
+    const r = await Purchases.restorePurchases();
+    await rcApply(r.customerInfo);
+    openPlanSheet("");
+    toast(planId()==="free" ? "復元できる購入がありませんでした" : "購入を復元しました");
+  }catch(e){ console.warn(e); toast("復元できませんでした"); }
+}
+
+/* ---------- 画面 ---------- */
 function planBlock(){
   const p = plan();
   return '<div class="pill-label">プラン</div>'+
@@ -4005,18 +4154,40 @@ function openPlanSheet(reason){
       : (reason==="client"
         ? '<p class="set-note">2人目からのクライアント管理はトレーナープランの機能です。</p>'
         : '');
+  const srv = state._srv || {};
+  let manage = "";
+  if(NATIVE){
+    manage = '<div class="bk-btns">'+
+      '<button class="btn ghost" id="plan-restore">購入を復元</button>'+
+      '<button class="btn ghost" id="plan-manage">解約・変更</button>'+
+    '</div>';
+  }else if(srv.manageable){
+    manage = '<div class="bk-btns"><button class="btn ghost" id="plan-portal" style="width:100%">お支払いを管理（解約・カード変更）</button></div>';
+  }
+  const legal = '<p class="set-note">'+
+    (NATIVE ? 'お支払いは Apple ID に請求されます。' : 'お支払いはクレジットカード（Stripe）で安全に処理されます。')+
+    'サブスクリプションは毎月自動更新されます。期間終了の24時間前までに解約すれば次回は請求されません。'+
+    (LEGAL.terms ? ' <a href="'+LEGAL.terms+'" target="_blank" rel="noopener">利用規約</a>' : '')+
+    (LEGAL.privacy ? ' ・ <a href="'+LEGAL.privacy+'" target="_blank" rel="noopener">プライバシーポリシー</a>' : '')+
+    '</p>';
+  const devRow = (!hasBackend() && /[?&]dev=1/.test(location.search))
+    ? '<div class="set-row" style="margin-top:6px">'+
+        '<div class="txt"><b>開発用：プランを切り替え</b><span>サーバー未接続のときだけ出る動作確認用。</span></div>'+
+        '<button class="plan-buy ghost" id="plan-dev" style="width:auto;padding:0 14px;margin:0;height:40px">切替</button>'+
+      '</div>'
+    : '';
   sheet.innerHTML =
-    '<h2>プラン</h2>'+ head + cards +
-    '<div class="set-row" style="margin-top:6px">'+
-      '<div class="txt"><b>開発用：プランを切り替え</b><span>決済をつなぐまでの動作確認用。公開時はこの行を消す。</span></div>'+
-      '<button class="plan-buy ghost" id="plan-dev" style="width:auto;padding:0 14px;margin:0;height:40px">切替</button>'+
-    '</div>'+
+    '<h2>プラン</h2>'+ head + cards + manage + legal + devRow +
     '<div class="sheet-btns"><button class="btn ghost" id="plan-close">閉じる</button></div>';
   showSheet();
   sheet.querySelectorAll("[data-buy]").forEach(b=>{
     b.onclick = ()=> startCheckout(b.dataset.buy);
   });
-  document.getElementById("plan-dev").onclick = ()=>{
+  const rs = document.getElementById("plan-restore"); if(rs) rs.onclick = rcRestore;
+  const mg = document.getElementById("plan-manage");  if(mg) mg.onclick = ()=> window.open("https://apps.apple.com/account/subscriptions", "_blank");
+  const pt = document.getElementById("plan-portal");  if(pt) pt.onclick = openPortal;
+  const dv = document.getElementById("plan-dev");
+  if(dv) dv.onclick = ()=>{
     const i = PLAN_ORDER.indexOf(planId());
     state.plan = PLAN_ORDER[(i+1) % PLAN_ORDER.length];
     save(); openPlanSheet(reason); renderTrain();
@@ -4024,11 +4195,23 @@ function openPlanSheet(reason){
   };
   document.getElementById("plan-close").onclick = hideSheet;
 }
-function startCheckout(id){
-  const url = CHECKOUT_URLS[id];
-  if(!url){ toast("決済リンクが未設定です（CHECKOUT_URLSに入れてください）"); return; }
-  location.href = url + (url.indexOf("?")<0?"?":"&") + "client_reference_id=" +
-                  encodeURIComponent((state.account && state.account.uid) || "local");
+async function startCheckout(id){
+  if(NATIVE){ rcPurchase(id); return; }
+  if(!hasBackend()){ toast("決済はまだ準備中です"); return; }
+  try{
+    toast("決済画面を開いています…");
+    const d = await api("/api/checkout", {method:"POST", body: JSON.stringify({plan:id})});
+    if(d && d.url) location.href = d.url; else toast("決済画面を開けませんでした");
+  }catch(e){
+    console.warn(e);
+    toast(/not-configured/.test(e.message||"") ? "決済はまだ準備中です" : "決済画面を開けませんでした");
+  }
+}
+async function openPortal(){
+  try{
+    const d = await api("/api/portal", {method:"POST"});
+    if(d && d.url) location.href = d.url;
+  }catch(e){ console.warn(e); toast("管理画面を開けませんでした"); }
 }
 
 /* ============================================================
@@ -4173,13 +4356,6 @@ function bindSettingsExtras(){
   const sy = document.getElementById("acc-sync");   if(sy) sy.onclick = ()=> cloudSync(true);
   const so = document.getElementById("acc-out");    if(so) so.onclick = signOut;
   const pl = document.getElementById("set-plan");   if(pl) pl.onclick = ()=> openPlanSheet("");
-  const ak = document.getElementById("ai-key");
-  if(ak){
-    ak.oninput  = ()=>{ state.ui.aiKey = ak.value.trim(); save(); };
-    ak.onchange = ()=>{ state.ui.aiKey = ak.value.trim(); save(); toast("APIキーを保存しました"); };
-    /* シート内のタップが背景に抜けないようにする */
-    ak.onclick = e=> e.stopPropagation();
-  }
 }
 
 async function signIn(provider){
@@ -4197,6 +4373,9 @@ async function signIn(provider){
     state.account = {uid:u.uid, name:u.displayName||"", email:u.email||"", provider:provider, syncedAt:0};
     save();
     await cloudSync(true);
+    /* 端末鍵で買っていたプランをアカウントに結びつける */
+    try{ applyMe(await api("/api/link", {method:"POST"})); }catch(e){}
+    if(NATIVE && rcReady){ try{ await Purchases.logIn({appUserID: identity()}); }catch(e){} }
     openSettingsSheet(false);
   }catch(e){
     console.error(e);
@@ -4279,15 +4458,9 @@ function openHandoverSheet(provider){
 
 /* ============================================================
    AI相談
-   ・endpoint を入れると自分のサーバー経由（本番はこちら）
-   ・空のときは端末に入れたAPIキーで直接呼ぶ（自分用の確認モード）
+   ・呼び出しはすべてサーバー（worker/）経由。APIキーは端末に置かない
+   ・月の回数はサーバーが数える。ここでの表示は控え
    ============================================================ */
-const AI_CONFIG = { endpoint:"", model:"claude-sonnet-4-6", maxTokens:1000 };
-const AI_SYSTEM =
-  "あなたは経験豊富なパーソナルトレーナーです。日本語で、短く具体的に答えてください。"+
-  "相手の記録（種目・重量・回数・体重）が渡されたら必ずそれを根拠にして話します。"+
-  "重量や回数は必ず数字で提案します。医療の診断はしません。"+
-  "痛みや体調不良が出ている場合は、無理をせず医療機関に相談するよう伝えてください。";
 const AI_SUGGEST = [
   "今週のメニューを組んで",
   "最近の記録を見て評価して",
@@ -4296,12 +4469,12 @@ const AI_SUGGEST = [
 ];
 let aiBusy = false;
 
-function aiKeyBlock(){
-  if(AI_CONFIG.endpoint) return "";
-  return '<div class="pill-label">AI相談の接続（自分用）</div>'+
-    '<input class="text" id="ai-key" type="password" placeholder="Anthropic APIキー（sk-ant-...）" value="'+
-      escapeHtml((state.ui && state.ui.aiKey) || "")+'">'+
-    '<p class="set-note">配布時は AI_CONFIG.endpoint にサーバーを設定してください。</p>';
+function aiConnBlock(){
+  const ok = hasBackend();
+  return '<div class="pill-label">AI相談の接続</div>'+
+    '<div class="set-row"><div class="txt"><b>'+(ok ? "サーバー経由で接続中" : "未設定")+'</b><span>'+
+      (ok ? escapeHtml(backendUrl()) : "index.html の BACKEND_URL に Worker のURLを入れると使えます")+
+    '</span></div></div>';
 }
 /* 直近の記録を短くまとめてAIに渡す */
 function aiContext(){
@@ -4386,16 +4559,22 @@ async function sendAI(){
     const msgs = state.aiChat.slice(-10).map(m=> ({role:m.role, content:m.content}));
     msgs[msgs.length-1] = {role:"user", content: aiContext()+"\n\n【相談】\n"+text};
     const answer = await callAI(msgs);
-    aiConsume();
     aiAppend("assistant", answer || "うまく答えられませんでした。もう一度お願いします。");
   }catch(e){
     console.warn(e);
     wait.remove();
+    if(e && e.status===402){
+      if(e.data) applyMe(Object.assign({plan: e.data.plan}, e.data));
+      openPlanSheet("ai");
+      return;
+    }
     const d = document.createElement("div");
     d.className = "ai-msg sys";
-    d.textContent = (e && e.message==="no-endpoint")
-      ? "AIの接続先が未設定です。設定（⚙）→「AI相談の接続」でAPIキーを入れるか、AI_CONFIG.endpoint に自分のサーバーを設定してください。"
-      : "つながりませんでした。電波か接続設定を確認してください。";
+    d.textContent = (e && e.message==="no-backend")
+      ? "AIの接続先が未設定です。index.html の BACKEND_URL に Worker のURLを入れてください。"
+      : (e && e.message==="ai-not-configured")
+        ? "サーバーに Anthropic の API キーが入っていません（wrangler secret put ANTHROPIC_API_KEY）。"
+        : "つながりませんでした。電波か接続設定を確認してください。";
     log.appendChild(d);
   }finally{
     aiBusy = false;
@@ -4404,32 +4583,14 @@ async function sendAI(){
   }
 }
 async function callAI(msgs){
-  if(AI_CONFIG.endpoint){
-    const r = await fetch(AI_CONFIG.endpoint, {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({system:AI_SYSTEM, messages:msgs, plan:planId(),
-                            uid:(state.account&&state.account.uid)||null})
-    });
-    if(!r.ok) throw new Error("http-"+r.status);
-    const d = await r.json();
-    return d.text || (Array.isArray(d.content) ? d.content.filter(x=>x.type==="text").map(x=>x.text).join("\n") : "");
+  const d = await api("/api/ai", {method:"POST", body: JSON.stringify({messages: msgs})});
+  if(d && d.ai){
+    state.aiUsage = {month: todayStr().slice(0,7), count: d.ai.used || 0};
+    save();
+  }else{
+    aiConsume();
   }
-  const key = (state.ui && state.ui.aiKey) || "";
-  if(!key) throw new Error("no-endpoint");
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{
-      "content-type":"application/json",
-      "x-api-key": key,
-      "anthropic-version":"2023-06-01",
-      "anthropic-dangerous-direct-browser-access":"true"
-    },
-    body: JSON.stringify({model:AI_CONFIG.model, max_tokens:AI_CONFIG.maxTokens,
-                          system:AI_SYSTEM, messages:msgs})
-  });
-  if(!r.ok) throw new Error("http-"+r.status);
-  const d = await r.json();
-  return (d.content||[]).filter(x=> x.type==="text").map(x=> x.text).join("\n");
+  return (d && d.text) || "";
 }
 
 /* ---------- 日付ナビ ---------- */
@@ -4472,6 +4633,7 @@ if(CLOUD_CONFIG.enabled && signedIn()) cloudSync(false);
 applyTheme();
 switchTab("train");
 initBackupReminder();
+initBackend();          // サーバーからプランと回数を取り、決済から戻ってきた場合の確認もする
 
 
 </script>
