@@ -310,7 +310,32 @@
   .searchbar input::placeholder{color:var(--muted-2);font-weight:500;}
   .searchbar input::-webkit-search-cancel-button{display:none;}
   .s-clear{display:none;width:38px;height:38px;flex:0 0 38px;border-radius:50%;background:var(--surface-3);color:var(--text);font-size:15px;place-items:center;}
+  .cam-btn{display:flex;align-items:center;gap:5px;height:36px;padding:0 10px 0 8px;flex:0 0 auto;border-radius:10px;background:var(--pri-dim);border:1px solid var(--pri-line);color:var(--pri);font-size:15px;font-weight:800;}
+  .cam-btn span{font-size:12px;}
+  .cam-btn:active{background:var(--pri-line);}
   .search-results{display:none;margin-bottom:14px;}
+  /* 📷 これ何？ の結果 */
+  .vis-photo{display:block;width:100%;max-height:46vh;object-fit:contain;border-radius:14px;background:var(--surface-2);margin-bottom:12px;}
+  .vis-wait,.vis-err{display:flex;align-items:center;gap:10px;padding:14px;border-radius:12px;background:var(--surface-2);font-size:14px;font-weight:700;}
+  .vis-err{color:var(--red);background:var(--red-dim);}
+  .vis-spin{width:18px;height:18px;border-radius:50%;border:3px solid var(--pri-line);border-top-color:var(--pri);animation:vspin .8s linear infinite;flex:0 0 18px;}
+  @keyframes vspin{to{transform:rotate(360deg);}}
+  .vis-quota{float:right;font-size:12px;font-weight:600;color:var(--muted);margin-top:4px;}
+  .vis-top{display:flex;gap:12px;align-items:center;margin-bottom:10px;}
+  .vis-thumb{width:96px;height:96px;flex:0 0 96px;object-fit:cover;border-radius:12px;background:var(--surface-2);}
+  .vis-id{flex:1;min-width:0;}
+  .vis-name{font-size:20px;font-weight:800;line-height:1.3;}
+  .vis-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .vis-mus{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .vis-mus span{padding:3px 9px;border-radius:999px;background:var(--green-dim);border:1px solid var(--green-line);color:var(--green);font-size:12px;font-weight:700;}
+  .vis-conf{margin:0 0 10px;font-size:13px;color:var(--pri);font-weight:700;}
+  .vis-box{padding:12px 14px;border-radius:12px;background:var(--surface-2);font-size:14px;line-height:1.7;margin-bottom:8px;white-space:pre-wrap;}
+  .vis-lab{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:4px;}
+  .vis-cands{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;}
+  .vis-cand{padding:9px 12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:700;}
+  .mphoto{display:flex;align-items:center;gap:12px;width:100%;margin:10px 0 2px;padding:8px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);text-align:left;}
+  .mphoto img{width:64px;height:64px;object-fit:cover;border-radius:9px;flex:0 0 64px;}
+  .mphoto-t{font-size:13px;font-weight:700;color:var(--muted);}
   .sr-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:56px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;text-align:left;}
   .sr-item:active{background:var(--surface-2);}
   .sr-item.active{border-color:var(--pri);background:var(--pri-dim);}
@@ -720,7 +745,9 @@
       <span class="s-ico">🔍</span>
       <input id="ex-search" type="text" inputmode="search" autocomplete="off" placeholder="種目を検索（例: べんち / らっと）">
       <button class="s-clear" id="s-clear">✕</button>
+      <button class="cam-btn" id="cam-btn" title="マシンを撮って名前を調べる">📷<span>これ何？</span></button>
     </div>
+    <input type="file" id="cam-file" accept="image/*" capture="environment" style="display:none">
     <div class="search-results" id="search-results"></div>
     <button class="ex-select" id="ex-select">
       <span class="es-l"><span class="es-area" id="es-area"></span><span class="es-name" id="es-name">種目を選ぶ</span></span>
@@ -1577,7 +1604,8 @@ function renderTrainBody(){
     return;
   }
 
-  /* マシンの参考写真 */
+  /* マシンの参考写真（📷 これ何？ で撮ったもの） */
+  buildPhoto(card, ex);
 
   /* 前回の記録 */
   const ref = document.createElement("div");
@@ -3963,11 +3991,11 @@ const NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform==
 
 const PLANS = {
   free:    {id:"free",    name:"フリー",       price:"¥0",        ai:3,  clients:1,
-            feats:["記録・カレンダー・体重・メニューは全部無料","AI相談は<b>お試し月3回</b>","クライアントは自分ひとり"]},
+            feats:["記録・カレンダー・体重・メニューは全部無料","AI相談は<b>お試し月3回</b>・📷 これ何？は<b>月10回</b>","クライアントは自分ひとり"]},
   pro:     {id:"pro",     name:"プロ",         price:"¥600/月",   ai:20, clients:1,
-            feats:["AI相談 <b>月20回</b>","記録を読ませてメニューを組んでもらえる","バックアップ・引き継ぎ込み"]},
+            feats:["AI相談 <b>月20回</b>・📷 これ何？ <b>月60回</b>","記録を読ませてメニューを組んでもらえる","バックアップ・引き継ぎ込み"]},
   max:     {id:"max",     name:"マックス",     price:"¥1,280/月", ai:-1, clients:1,
-            feats:["AI相談 <b>無制限</b>","停滞したその場で相談できる","トレーニング中の質問もし放題"]},
+            feats:["AI相談・📷 これ何？ <b>無制限</b>","停滞したその場で相談できる","トレーニング中の質問もし放題"]},
   trainer: {id:"trainer", name:"トレーナー",   price:"¥3,980/月", ai:-1, clients:-1,
             feats:["<b>クライアント無制限</b>で切り替え管理","AI相談も無制限","指導する全員の記録を1台で"]},
 };
@@ -4153,7 +4181,9 @@ function openPlanSheet(reason){
       ? '<p class="set-note">今月のAI相談を使い切りました。続けるならプランを上げてください。</p>'
       : (reason==="client"
         ? '<p class="set-note">2人目からのクライアント管理はトレーナープランの機能です。</p>'
-        : '');
+        : (reason==="vision"
+          ? '<p class="set-note">今月の「📷 これ何？」を使い切りました。プロで月60回、マックス以上は無制限です。</p>'
+          : ''));
   const srv = state._srv || {};
   let manage = "";
   if(NATIVE){
@@ -4592,6 +4622,165 @@ async function callAI(msgs){
   }
   return (d && d.text) || "";
 }
+
+/* ============================================================
+   📷 これ何？ — マシンの写真から種目を判定する
+   ・写真を縮小してサーバー（/api/vision）へ。判定結果は名前・部位・使い方
+   ・登録済みの種目に一致すればそれを開く。無ければその場で追加（写真つき）
+   ・写真は小さくして種目に保存し、次からカードに出す（端末保存なので軽く）
+   ============================================================ */
+function visionLeft(){
+  const v = state._srv && state._srv.vision;
+  if(!v) return null;
+  return v.limit < 0 ? Infinity : Math.max(0, v.limit - v.used);
+}
+function visionNote(){
+  const l = visionLeft();
+  if(l===null) return "";
+  return l===Infinity ? "無制限" : "今月あと "+l+" 回";
+}
+/* 画像を縮小して JPEG に。max は長辺の px */
+function shrinkImage(file, max, quality){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * r)), h = Math.max(1, Math.round(img.naturalHeight * r));
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error("bad-image")); };
+    img.src = url;
+  });
+}
+function openCamera(){
+  if(!hasBackend()){ toast("AIの接続先が未設定です（BACKEND_URL）"); return; }
+  const inp = document.getElementById("cam-file");
+  inp.value = "";
+  inp.click();
+}
+async function identifyMachine(file){
+  if(!file) return;
+  const sheet = document.getElementById("sheet");
+  let big, thumb;
+  try{
+    big   = await shrinkImage(file, 1024, 0.82);
+    thumb = await shrinkImage(file, 360, 0.62);
+  }catch(e){ toast("写真を読み込めませんでした"); return; }
+  sheet.innerHTML =
+    '<h2>📷 これ何？</h2>'+
+    '<img class="vis-photo" src="'+big+'" alt="">'+
+    '<div class="vis-wait"><span class="vis-spin"></span>写真を見ています…</div>'+
+    '<div class="sheet-btns"><button class="btn ghost" id="vis-close">閉じる</button></div>';
+  showSheet();
+  document.getElementById("vis-close").onclick = hideSheet;
+  try{
+    const known = state.exercises.map(e=> e.name);
+    const d = await api("/api/vision", {method:"POST", body: JSON.stringify({image: big, mediaType:"image/jpeg", known})});
+    if(d && d.vision && state._srv) { state._srv.vision = d.vision; }
+    renderVisionResult(d.result || {}, thumb);
+  }catch(e){
+    console.warn(e);
+    if(e && e.status===402){
+      if(e.data && e.data.vision && state._srv) state._srv.vision = e.data.vision;
+      openPlanSheet("vision"); return;
+    }
+    const msg = (e && e.message==="ai-not-configured") ? "サーバーに Anthropic の API キーが入っていません。"
+              : (e && e.message==="image-too-large") ? "写真が大きすぎました。もう一度撮ってください。"
+              : (e && e.message==="refused") ? "この写真は判定できませんでした。器具だけが写るように撮り直してください。"
+              : "つながりませんでした。電波を確認してもう一度お願いします。";
+    const w = sheet.querySelector(".vis-wait");
+    if(w){ w.className = "vis-err"; w.textContent = msg; }
+  }
+}
+function renderVisionResult(r, thumb){
+  const sheet = document.getElementById("sheet");
+  const found = r.found !== false && r.name_ja;
+  const match = found && r.match ? state.exercises.find(e=> e.name===r.match) : null;
+  const near  = found && !match ? state.exercises.find(e=> norm(e.name)===norm(r.name_ja)) : null;
+  const hit   = match || near;
+  const conf  = {high:"", mid:"たぶんこれ。違ったら下の候補から選んでください。", low:"自信なし。候補から選ぶか、別の角度で撮り直してください。"}[r.confidence] || "";
+  const cands = (Array.isArray(r.candidates) ? r.candidates : []).filter(x=> x && x!==r.name_ja).slice(0,3);
+  let html =
+    '<h2>📷 これ何？<span class="vis-quota">'+visionNote()+'</span></h2>'+
+    '<div class="vis-top"><img class="vis-thumb" src="'+thumb+'" alt="">'+
+      '<div class="vis-id">'+
+        '<div class="vis-name">'+escapeHtml(found ? r.name_ja : "器具が見つかりません")+'</div>'+
+        (found ? '<div class="vis-sub">'+escapeHtml(r.name_en||"")+(r.area?' ・ '+escapeHtml(areaName(r.area)):'')+'</div>' : '')+
+        (found && Array.isArray(r.muscles) && r.muscles.length ? '<div class="vis-mus">'+r.muscles.slice(0,3).map(m=> '<span>'+escapeHtml(m)+'</span>').join("")+'</div>' : '')+
+      '</div></div>';
+  if(!found){
+    html += '<p class="set-note">マシン全体が入るように、少し離れて撮ってください。</p>';
+  }else{
+    if(conf) html += '<p class="vis-conf">'+conf+'</p>';
+    if(r.how_to) html += '<div class="vis-box"><div class="vis-lab">使い方</div>'+escapeHtml(r.how_to)+'</div>';
+    if(r.tip)    html += '<div class="vis-box"><div class="vis-lab">よくあるミス</div>'+escapeHtml(r.tip)+'</div>';
+    if(cands.length) html += '<div class="vis-lab" style="margin-top:10px">他の候補</div><div class="vis-cands">'+
+      cands.map((c,i)=> '<button class="vis-cand" data-i="'+i+'">'+escapeHtml(c)+'</button>').join("")+'</div>';
+  }
+  html += '<div class="sheet-btns">'+
+    '<button class="btn ghost" id="vis-close">閉じる</button>'+
+    (found ? (hit ? '<button class="btn primary" id="vis-open">'+escapeHtml(hit.name)+'を開く</button>'
+                  : '<button class="btn primary" id="vis-add">種目として追加</button>') : '')+
+    '</div>';
+  sheet.innerHTML = html;
+  showSheet();
+  document.getElementById("vis-close").onclick = hideSheet;
+  const op = document.getElementById("vis-open");
+  if(op) op.onclick = ()=>{
+    if(!hit.photo){ hit.photo = thumb; }
+    hideSheet(); selectExercise(hit.id);
+    toast(hit.name+"を開きました");
+  };
+  const ad = document.getElementById("vis-add");
+  if(ad) ad.onclick = ()=> addFromVision(r.name_ja, r.area, thumb);
+  sheet.querySelectorAll(".vis-cand").forEach(b=>{
+    b.onclick = ()=>{
+      const nm = cands[+b.dataset.i];
+      const ex = state.exercises.find(e=> norm(e.name)===norm(nm));
+      if(ex){ if(!ex.photo) ex.photo = thumb; hideSheet(); selectExercise(ex.id); }
+      else addFromVision(nm, r.area, thumb);
+    };
+  });
+}
+function addFromVision(name, area, thumb){
+  const cat = AREAS.find(a=> a.id===area) ? area : "machine";
+  const nid = uid();
+  state.exercises.push({id:nid, name:name, cat:cat, photo:thumb});
+  state.ui.currentExId = nid;
+  state.ui.currentArea = cat;
+  state.ui.q = "";
+  const si = document.getElementById("ex-search"); if(si) si.value = "";
+  save(); hideSheet(); renderTrain();
+  toast("「"+name+"」を追加しました");
+}
+/* カードに出す写真（タップで拡大・削除） */
+function buildPhoto(card, ex){
+  if(!ex.photo) return;
+  const ph = document.createElement("button");
+  ph.className = "mphoto";
+  ph.innerHTML = '<img src="'+ex.photo+'" alt=""><span class="mphoto-t">このマシン</span>';
+  ph.onclick = ()=> openPhotoSheet(ex);
+  card.appendChild(ph);
+}
+function openPhotoSheet(ex){
+  const sheet = document.getElementById("sheet");
+  sheet.innerHTML =
+    '<h2>'+escapeHtml(ex.name)+'</h2>'+
+    '<img class="vis-photo" src="'+ex.photo+'" alt="">'+
+    '<div class="sheet-btns"><button class="btn ghost" id="ph-del">写真を削除</button><button class="btn primary" id="ph-close">閉じる</button></div>';
+  showSheet();
+  document.getElementById("ph-close").onclick = hideSheet;
+  document.getElementById("ph-del").onclick = ()=>{
+    if(!confirm("この写真を削除しますか？")) return;
+    delete ex.photo; save(); hideSheet(); renderTrainBody();
+  };
+}
+document.getElementById("cam-btn").onclick = openCamera;
+document.getElementById("cam-file").onchange = function(){ const f = this.files[0]; this.value = ""; if(f) identifyMachine(f); };
 
 /* ---------- 日付ナビ ---------- */
 document.getElementById("date-prev").onclick = ()=>{ viewDate = addDays(viewDate,-1); renderTrain(); };

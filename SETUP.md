@@ -38,6 +38,9 @@ cd .. && npm run worker:deploy              # www/ を作って Worker をデプ
 
 - 確認：`https://.../api/health` を開いて `"ai":true` なら OK
 - GitHub Pages で配り続けたいなら、`index.html` の `BACKEND_URL` に上の URL を入れる（iOS アプリでも必須）
+- **📷 これ何？**（マシンの写真から名前・使い方を判定）も同じ Worker の `/api/vision` で動く。
+  上限は AI相談と別枠でフリー月10回・プロ月60回・マックス以上は無制限（`worker/src/index.ts` の `VISION_LIMIT`）。
+  写真1枚あたり ¥3〜5。
 - モデルは `wrangler.toml` の `AI_MODEL`。既定は `claude-opus-5`。
   1 回の相談はだいたい ¥3〜5。コンソールの ¥3,000 で 600〜1,000 回くらい。
   安くしたいなら `claude-sonnet-5`（半額以下）。変えたら `npm run worker:deploy`

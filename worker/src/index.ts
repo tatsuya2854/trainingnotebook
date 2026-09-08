@@ -31,6 +31,8 @@ type PlanId = "free" | "pro" | "max" | "trainer";
 const PLAN_ORDER: PlanId[] = ["free", "pro", "max", "trainer"];
 /* AI相談の月の上限（-1 は無制限）。index.html の PLANS と揃える */
 const AI_LIMIT: Record<PlanId, number> = { free: 3, pro: 20, max: -1, trainer: -1 };
+/* 「📷 これ何？」（マシン判定）の月の上限。AI相談とは別枠 */
+const VISION_LIMIT: Record<PlanId, number> = { free: 10, pro: 60, max: -1, trainer: -1 };
 
 interface Entitlement {
   plan: PlanId;
@@ -138,19 +140,24 @@ async function getEntitlement(env: Env, id: string): Promise<Entitlement> {
 async function setEntitlement(env: Env, id: string, e: Entitlement): Promise<void> {
   await env.ENTITLEMENTS.put("ent:" + id, JSON.stringify(e));
 }
-async function getUsage(env: Env, id: string): Promise<number> {
-  const v = await env.ENTITLEMENTS.get("usage:" + id + ":" + monthKey());
+function usageKey(id: string, kind: "ai" | "vision"): string {
+  return (kind === "ai" ? "usage:" : "vusage:") + id + ":" + monthKey();
+}
+async function getUsage(env: Env, id: string, kind: "ai" | "vision" = "ai"): Promise<number> {
+  const v = await env.ENTITLEMENTS.get(usageKey(id, kind));
   return v ? parseInt(v, 10) || 0 : 0;
 }
-async function addUsage(env: Env, id: string): Promise<number> {
-  const n = (await getUsage(env, id)) + 1;
-  await env.ENTITLEMENTS.put("usage:" + id + ":" + monthKey(), String(n), { expirationTtl: 45 * 86400 });
+async function addUsage(env: Env, id: string, kind: "ai" | "vision" = "ai"): Promise<number> {
+  const n = (await getUsage(env, id, kind)) + 1;
+  await env.ENTITLEMENTS.put(usageKey(id, kind), String(n), { expirationTtl: 45 * 86400 });
   return n;
 }
 async function meResponse(env: Env, id: string): Promise<Record<string, unknown>> {
   const e = await getEntitlement(env, id);
   const used = await getUsage(env, id);
   const limit = AI_LIMIT[e.plan];
+  const vUsed = await getUsage(env, id, "vision");
+  const vLimit = VISION_LIMIT[e.plan];
   return {
     identity: id,
     plan: e.plan,
@@ -159,6 +166,7 @@ async function meResponse(env: Env, id: string): Promise<Record<string, unknown>
     periodEnd: e.periodEnd || null,
     manageable: e.source === "stripe" && !!e.stripeCustomerId,
     ai: { limit, used, left: limit < 0 ? -1 : Math.max(0, limit - used) },
+    vision: { limit: vLimit, used: vUsed, left: vLimit < 0 ? -1 : Math.max(0, vLimit - vUsed) },
   };
 }
 
@@ -376,6 +384,72 @@ async function handleAI(req: Request, env: Env, id: string): Promise<Response> {
   }
 }
 
+
+/* ---------- 📷 これ何？（マシンの写真から種目を判定） ---------- */
+const VISION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["found", "name_ja", "name_en", "area", "muscles", "how_to", "tip", "confidence", "match", "candidates"],
+  properties: {
+    found:      { type: "boolean", description: "写真にトレーニング器具が写っているか" },
+    name_ja:    { type: "string",  description: "器具・種目の一般的な日本語名（例：チェストプレス）" },
+    name_en:    { type: "string" },
+    area:       { type: "string",  enum: ["machine", "free", "cardio", "functional"] },
+    muscles:    { type: "array",   items: { type: "string" }, description: "主に鍛える部位。日本語で最大3つ" },
+    how_to:     { type: "string",  description: "使い方を3行以内。座面・グリップ・動き" },
+    tip:        { type: "string",  description: "初心者がやりがちなミスと直し方を1行" },
+    confidence: { type: "string",  enum: ["high", "mid", "low"] },
+    match:      { type: "string",  description: "known に同じ器具があればその文字列をそのまま。無ければ空文字" },
+    candidates: { type: "array",   items: { type: "string" }, description: "確信が持てないときの他の候補名。最大3つ" },
+  },
+};
+async function handleVision(req: Request, env: Env, id: string): Promise<Response> {
+  if (!env.ANTHROPIC_API_KEY) return bad("ai-not-configured", 503);
+  const body = await req.json().catch(() => null) as { image?: string; mediaType?: string; known?: string[] } | null;
+  const image = (body?.image || "").replace(/^data:[^,]+,/, "");
+  if (!image || image.length > 2_800_000) return bad(image ? "image-too-large" : "no-image");
+  const mediaType = (["image/jpeg", "image/png", "image/webp"].includes(body?.mediaType || "") ? body!.mediaType : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp";
+  const known = (Array.isArray(body?.known) ? body!.known : []).filter(x => typeof x === "string").slice(0, 300).map(x => x.slice(0, 60));
+
+  const e = await getEntitlement(env, id);
+  const limit = VISION_LIMIT[e.plan];
+  const used = await getUsage(env, id, "vision");
+  if (limit >= 0 && used >= limit) return json({ error: "quota", plan: e.plan, vision: { limit, used, left: 0 } }, 402);
+
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const model = env.AI_MODEL || "claude-opus-5";
+  const prompt =
+    "この写真に写っているトレーニング器具（マシン・フリーウェイト・有酸素マシン）を判定してください。" +
+    "ジムで初めて見た人が『これ何？』と聞いている場面です。日本のジムで一般的な呼び名を使ってください。" +
+    (known.length ? "\n\nこのアプリに登録済みの器具名一覧（known）。同じ器具があれば match にその文字列をそのまま入れてください：\n" + known.join(" / ") : "") +
+    "\n\n器具が写っていなければ found=false にして、name_ja に『器具が見つかりません』と入れてください。";
+  try {
+    const res = await client.beta.messages.create({
+      model,
+      max_tokens: 1500,
+      system: "あなたはジムの設備に詳しいパーソナルトレーナーです。写真から器具を見分け、初心者向けに日本語で簡潔に説明します。",
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
+        { type: "text", text: prompt },
+      ] }],
+      output_config: { effort: "medium", format: { type: "json_schema", schema: VISION_SCHEMA } },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    });
+    if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
+    const text = res.content.filter(b => b.type === "text").map(b => b.text).join("");
+    let out: Record<string, unknown>;
+    try { out = JSON.parse(text); } catch { return bad("vision-parse", 502); }
+    const n = await addUsage(env, id, "vision");
+    return json({ result: out, model: res.model, vision: { limit, used: n, left: limit < 0 ? -1 : Math.max(0, limit - n) } });
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) return bad("ai-rate-limited", 429);
+    if (err instanceof Anthropic.AuthenticationError) return bad("ai-bad-key", 503);
+    if (err instanceof Anthropic.APIError) return bad("ai-api-" + err.status, 502);
+    return bad("ai-failed", 502);
+  }
+}
+
 /* ---------- 端末鍵 → アカウントの引き継ぎ ---------- */
 async function handleLink(env: Env, who: { id: string; deviceId: string | null; uid: string | null }): Promise<Response> {
   if (!who.uid || !who.deviceId || who.id === who.deviceId) return json(await meResponse(env, who.id));
@@ -412,6 +486,7 @@ export default {
 
       if (path === "/api/me" && req.method === "GET") return withCors(json(await meResponse(env, id)));
       if (path === "/api/ai" && req.method === "POST") return withCors(await handleAI(req, env, id));
+      if (path === "/api/vision" && req.method === "POST") return withCors(await handleVision(req, env, id));
       if (path === "/api/checkout" && req.method === "POST") return withCors(await handleCheckout(req, env, id));
       if (path === "/api/checkout/confirm" && req.method === "GET") return withCors(await handleCheckoutConfirm(req, env, id));
       if (path === "/api/portal" && req.method === "POST") return withCors(await handlePortal(req, env, id));
