@@ -1,18 +1,9 @@
-# Worker（API + www/ の静的配信）を GitHub から全自動でデプロイする。
+# Worker（API + www/ の静的配信）を GitHub Actions からデプロイする。
+# Cloudflare の Git 連携（Workers Builds）を使っているなら、これは不要（Secrets が無ければ何もしない）。
 #
-# 必要な GitHub Secrets（リポジトリ → Settings → Secrets and variables → Actions → New repository secret）
-#   必須
-#     CLOUDFLARE_API_TOKEN     Cloudflare → My Profile → API Tokens → Create Token →
-#                              テンプレート「Edit Cloudflare Workers」で作る（Workers Scripts:Edit と Workers KV Storage:Edit）
-#     CLOUDFLARE_ACCOUNT_ID    Cloudflare ダッシュボード右側の Account ID
-#     ANTHROPIC_API_KEY        Claude コンソール → API Keys
-#   任意（入れた分だけ有効になる）
-#     STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / REVENUECAT_API_KEY / REVENUECAT_WEBHOOK_AUTH
-# 任意の Variables（同じ画面の Variables タブ）
-#     STRIPE_PRICE_PRO / STRIPE_PRICE_MAX / STRIPE_PRICE_TRAINER / APP_URL / AI_MODEL / ALLOWED_ORIGINS
-#
-# KV の名前空間は初回に自動で作って wrangler.toml に差し込む。手で id を貼る必要はない。
-# Cloudflare の Secrets が無いときは何もしないで終わる（失敗にはしない）。
+# 必要な GitHub Secrets（リポジトリ → Settings → Secrets and variables → Actions）
+#   必須：CLOUDFLARE_API_TOKEN（テンプレート「Edit Cloudflare Workers」）/ CLOUDFLARE_ACCOUNT_ID / ANTHROPIC_API_KEY
+#   任意：STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / REVENUECAT_API_KEY / REVENUECAT_WEBHOOK_AUTH
 name: Deploy Worker
 
 on:
@@ -24,6 +15,8 @@ on:
       - "terms.html"
       - "worker/**"
       - "scripts/**"
+      - "wrangler.toml"
+      - "package.json"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
 
@@ -53,51 +46,28 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install worker deps
+      - name: Install
         if: steps.check.outputs.ready == 'true'
-        working-directory: worker
         run: npm ci
 
       - name: Typecheck
         if: steps.check.outputs.ready == 'true'
-        working-directory: worker
         run: npm run typecheck
-
-      - name: Build (www/ + KV namespace)
-        if: steps.check.outputs.ready == 'true'
-        working-directory: worker
-        run: npm run build
 
       - name: Deploy
         if: steps.check.outputs.ready == 'true'
-        working-directory: worker
-        env:
-          V_PRO: ${{ vars.STRIPE_PRICE_PRO }}
-          V_MAX: ${{ vars.STRIPE_PRICE_MAX }}
-          V_TRAINER: ${{ vars.STRIPE_PRICE_TRAINER }}
-          V_APP_URL: ${{ vars.APP_URL }}
-          V_MODEL: ${{ vars.AI_MODEL }}
-          V_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+        id: deploy
         run: |
-          ARGS=""
-          [ -n "$V_PRO" ]     && ARGS="$ARGS --var STRIPE_PRICE_PRO:$V_PRO"
-          [ -n "$V_MAX" ]     && ARGS="$ARGS --var STRIPE_PRICE_MAX:$V_MAX"
-          [ -n "$V_TRAINER" ] && ARGS="$ARGS --var STRIPE_PRICE_TRAINER:$V_TRAINER"
-          [ -n "$V_APP_URL" ] && ARGS="$ARGS --var APP_URL:$V_APP_URL"
-          [ -n "$V_MODEL" ]   && ARGS="$ARGS --var AI_MODEL:$V_MODEL"
-          [ -n "$V_ORIGINS" ] && ARGS="$ARGS --var ALLOWED_ORIGINS:$V_ORIGINS"
           set -o pipefail
-          npx wrangler deploy $ARGS | tee deploy.log
+          npx wrangler deploy | tee deploy.log
           URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "### デプロイ完了 🚀" >> "$GITHUB_STEP_SUMMARY"
           echo "- アプリ / API：$URL" >> "$GITHUB_STEP_SUMMARY"
           echo "- 動作確認：$URL/api/health" >> "$GITHUB_STEP_SUMMARY"
-        id: deploy
 
       - name: Sync secrets to Worker
         if: steps.check.outputs.ready == 'true'
-        working-directory: worker
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
@@ -113,9 +83,6 @@ jobs:
               echo "secret $NAME: 未設定（スキップ）"
             fi
           done
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::warning::ANTHROPIC_API_KEY が未設定です。AI相談と📷これ何？はまだ動きません"
-          fi
 
       - name: Health check
         if: steps.check.outputs.ready == 'true' && steps.deploy.outputs.url != ''

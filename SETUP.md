@@ -7,7 +7,8 @@
 index.html          ← アプリ本体（Web / iOS 共通）
 privacy.html        ← プライバシーポリシー（App Store で URL 必須）
 terms.html          ← 利用規約
-worker/             ← サーバー（Cloudflare Worker）。AI中継・Stripe・RevenueCat・プラン管理
+worker/src/index.ts ← サーバー（Cloudflare Worker）。AI中継・Stripe・RevenueCat・プラン管理
+wrangler.toml       ← Worker の設定（モデル・価格 ID など）
 ios/                ← Xcode プロジェクト（Capacitor）
 scripts/build-www.mjs ← index.html などを www/ に集める（iOS と Worker はここを見る）
 ```
@@ -25,22 +26,15 @@ AI も決済もこれが無いと動かない。Cloudflare は無料枠で足り
 
 ### 1-A. Cloudflare の Git 連携で自動デプロイ（おすすめ・GitHub に鍵を置かない）
 Cloudflare ダッシュボード → Workers & Pages → Create → 「Import a repository」でこのリポジトリを選ぶ。
-すでに繋いであるなら Worker → **設定 → ビルド** を開いて、次の 3 つを合わせる：
+**ビルド設定は初期値のままで動く**（ルートディレクトリ `/`・ビルドコマンド無し・デプロイコマンド `npx wrangler deploy`）。
+`wrangler.toml` がリポジトリ直下にあり、`www/` の生成と KV の作成は wrangler が自動でやる。
 
-| 項目 | 値 |
-|---|---|
-| ルートディレクトリ | `worker` |
-| ビルドコマンド | `npm run build` |
-| デプロイコマンド | `npx wrangler deploy` |
-
-`npm run build` が `www/` の生成と **KV 名前空間の作成・id の差し込み**まで自動でやる。手作業は無し。
-本番ブランチは `main`（ブランチ設定で `claude/workout-app-payments-ai-qvs947` を本番にしても動く）。
-
-次に **AI の鍵を Worker に入れる**：Worker → 設定 → **変数とシークレット**（「ビルド」の中ではなく、上の方にある Worker 本体の欄）→ 追加
+やることは **AI の鍵を入れる**だけ：Worker → 設定 → **変数とシークレット**（「ビルド」の中ではなく、上の方にある Worker 本体の欄）→ 追加
 → タイプ「**シークレット**」→ 名前 `ANTHROPIC_API_KEY` → 値に Claude コンソール → API Keys で作ったキー → デプロイ。
 
-ビルドを「再試行」して成功したら、Worker の URL（`https://trainingnotebook.<アカウント>.workers.dev`）を開く。
-これが**アプリの配信 URL 兼 API の URL**。AI相談と 📷 これ何？ がもう動く。`/api/health` で `"ai":true` なら OK。
+push するたびに自動でビルドされる。本番は `main` ブランチ（プロダクション ブランチの設定）。
+Worker の URL（`https://trainingnotebook.<アカウント>.workers.dev`）を開けば、AI相談と 📷 これ何？ が動く。
+`/api/health` で `"ai":true` なら OK。
 
 ### 1-B. GitHub Actions から自動デプロイ（1-A を使わない場合）
 GitHub のリポジトリ → **Settings → Secrets and variables → Actions** に 3 つ入れて、Actions → Deploy Worker → Run workflow：
@@ -61,13 +55,13 @@ Stripe や RevenueCat の鍵も同じ画面の Secrets に入れれば次のデ�
   上限は AI相談と別枠でフリー月10回・プロ月60回・マックス以上は無制限（`worker/src/index.ts` の `VISION_LIMIT`）。
   写真1枚あたり ¥3〜5。
 - モデルは既定で `claude-opus-5`。1 回の相談はだいたい ¥3〜5。コンソールの ¥3,000 で 600〜1,000 回くらい。
-  安くしたいなら `worker/wrangler.toml` の `AI_MODEL` を `claude-sonnet-5` に（半額以下）
+  安くしたいなら `wrangler.toml` の `AI_MODEL` を `claude-sonnet-5` に（半額以下）
 - 1-A のときの Stripe / RevenueCat の鍵は、ANTHROPIC_API_KEY と同じ「変数とシークレット」にシークレットとして追加。
-  価格 ID（`STRIPE_PRICE_*`）と `APP_URL` は `worker/wrangler.toml` の `[vars]` に書いて push
+  価格 ID（`STRIPE_PRICE_*`）と `APP_URL` は `wrangler.toml` の `[vars]` に書いて push
 
 ### 手元の Mac からデプロイしたいとき（任意）
 ```bash
-cd worker && npm install && npx wrangler login
+npm install && npx wrangler login
 npx wrangler secret put ANTHROPIC_API_KEY
 npm run deploy        # www/ 生成 → KV 作成 → デプロイ
 ```
@@ -79,16 +73,15 @@ npm run deploy        # www/ 生成 → KV 作成 → デプロイ
 1. https://dashboard.stripe.com でアカウント作成 → 開発者 → API キーの **シークレットキー**（まずは `sk_test_...` で）
 2. 商品と価格を自動作成：
    ```bash
-   cd worker
    STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup
    ```
-   出力された `STRIPE_PRICE_PRO / MAX / TRAINER` を `worker/wrangler.toml` の `[vars]` に書いて push（GitHub Actions 派なら Variables でも可）
+   出力された `STRIPE_PRICE_PRO / MAX / TRAINER` を `wrangler.toml` の `[vars]` に書いて push（GitHub Actions 派なら Variables でも可）
 3. 鍵を Worker の「変数とシークレット」に `STRIPE_SECRET_KEY`（シークレット）として入れる（GitHub Actions 派なら Secrets）
 4. Webhook を登録：Stripe → 開発者 → Webhook → エンドポイント追加
    - URL：`https://<WorkerのURL>/api/webhooks/stripe`
    - イベント：`checkout.session.completed`、`customer.subscription.created / updated / deleted / paused / resumed`
    - 署名シークレット `whsec_...` を同じく `STRIPE_WEBHOOK_SECRET` として入れる
-5. `worker/wrangler.toml` の `APP_URL` に、アプリを配っている URL（決済後に戻る先）を書いて push（自動でデプロイされる）
+5. `wrangler.toml` の `APP_URL` に、アプリを配っている URL（決済後に戻る先）を書いて push（自動でデプロイされる）
 6. カスタマーポータル（解約・カード変更）を有効化：Stripe → 設定 → Billing → カスタマーポータル → 有効化
 
 テストカード `4242 4242 4242 4242` で「プロにする」→ 戻ってきたら設定 → プランが「プロ」になれば完成。
@@ -164,6 +157,5 @@ RevenueCat：
 | 支払ったのにフリーのまま | Stripe の Webhook URL と `STRIPE_WEBHOOK_SECRET`。戻り URL に `?checkout=success` が付いているか |
 | iOS で「準備ができていません」 | `RC_CONFIG.iosApiKey` と、Xcode の In-App Purchase Capability |
 | iOS で「商品が登録されていません」 | App Store Connect の製品 ID と RevenueCat の Offering |
-| Cloudflare のビルドが失敗する | ルートディレクトリが `worker`、ビルドコマンドが `npm run build` になっているか |
-| ビルドログに「KV id が未解決」 | ダッシュボード → ストレージとデータベース → KV → 作成（名前は何でも可）→ その ID を「ビルド」の変数 `KV_NAMESPACE_ID` に入れて再試行 |
-| ローカルで試したい | `cp worker/.dev.vars.example worker/.dev.vars` に鍵を書いて `npm run worker:dev` → `http://localhost:8787` |
+| Cloudflare のビルドが失敗する | 設定 → ビルド → ビルド構成が初期値（ルート `/`・ビルドコマンド無し・`npx wrangler deploy`）か。ログの赤い行を確認 |
+| ローカルで試したい | `cp .dev.vars.example .dev.vars` に鍵を書いて `npm run dev` → `http://localhost:8787` |

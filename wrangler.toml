@@ -1,19 +1,25 @@
-# Cloudflare Worker の設定。デプロイ： npm run deploy（親の npm run worker:deploy でも可）
+# Cloudflare Worker の設定（API + www/ の静的配信）
+# ・Cloudflare の Git 連携は初期値（ルート "/"・ビルドコマンド無し・npx wrangler deploy）のままで動く
+# ・KV は id を書かない。wrangler が初回デプロイ時に自動作成し、以後は既存を引き継ぐ
+# ・手元：npm run deploy
 name = "trainingnotebook"
-main = "src/index.ts"
+main = "worker/src/index.ts"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# www/ をそのまま配信する（GitHub Pages を使い続けるならこのブロックは消してもよい）
+# バンドル前に www/ を作る（index.html / privacy.html / terms.html を集める）
+[build]
+command = "node scripts/build-www.mjs"
+
+# www/ をそのまま配信する
 [assets]
-directory = "../www"
+directory = "www"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
-# プラン・回数の保存先。`npx wrangler kv namespace create ENTITLEMENTS` で作った id を入れる
+# プラン・回数の保存先（自動作成）
 [[kv_namespaces]]
 binding = "ENTITLEMENTS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 [vars]
 AI_MODEL = "claude-opus-5"          # 安くしたいなら "claude-sonnet-5"
@@ -26,7 +32,7 @@ STRIPE_PRICE_MAX = ""
 STRIPE_PRICE_TRAINER = ""
 FIREBASE_PROJECT_ID = ""            # Firebase 同期を使うときだけ
 
-# 秘密は wrangler secret put で入れる（ファイルには書かない）
+# 秘密はダッシュボードの「変数とシークレット」か wrangler secret put で入れる（ファイルには書かない）
 #   ANTHROPIC_API_KEY        Anthropic コンソールの API キー
 #   STRIPE_SECRET_KEY        sk_live_... / sk_test_...
 #   STRIPE_WEBHOOK_SECRET    whsec_...
