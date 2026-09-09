@@ -182,19 +182,98 @@ function priceFor(env: Env, plan: PlanId): string | null {
        : plan === "max" ? env.STRIPE_PRICE_MAX || null
        : plan === "trainer" ? env.STRIPE_PRICE_TRAINER || null : null;
 }
-function planForPrice(env: Env, priceId: string | null | undefined): PlanId | null {
+function planForPrice(env: Env, priceId: string | null | undefined, setup?: StripeSetup | null): PlanId | null {
   if (!priceId) return null;
-  if (priceId === env.STRIPE_PRICE_PRO) return "pro";
-  if (priceId === env.STRIPE_PRICE_MAX) return "max";
-  if (priceId === env.STRIPE_PRICE_TRAINER) return "trainer";
+  if (priceId === env.STRIPE_PRICE_PRO || setup?.prices.pro === priceId) return "pro";
+  if (priceId === env.STRIPE_PRICE_MAX || setup?.prices.max === priceId) return "max";
+  if (priceId === env.STRIPE_PRICE_TRAINER || setup?.prices.trainer === priceId) return "trainer";
   return null;
 }
+/* ---------- Stripe の自動セットアップ ----------
+   STRIPE_SECRET_KEY さえ入っていれば、商品・価格・Webhook・解約画面（カスタマーポータル）を
+   初回に自動で作り、結果を KV に覚える。ダッシュボードでの手作業を無くすため。 */
+const PLAN_PRICE_JPY: Record<Exclude<PlanId, "free">, { amount: number; name: string; desc: string }> = {
+  pro:     { amount: 600,  name: "training support プロ",      desc: "AI相談 月20回・📷これ何？ 月60回" },
+  max:     { amount: 1280, name: "training support マックス",   desc: "AI相談・📷これ何？ 無制限" },
+  trainer: { amount: 3980, name: "training support トレーナー", desc: "クライアント無制限・AI相談 無制限" },
+};
+interface StripeSetup { prices: Record<string, string>; webhookSecret?: string; webhookUrl?: string; portal?: string; updatedAt: number }
+async function stripeSetupKey(env: Env): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.STRIPE_SECRET_KEY || ""));
+  return "stripe:setup:" + Array.from(new Uint8Array(buf)).slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function ensureStripe(env: Env, origin: string): Promise<StripeSetup | null> {
+  const stripe = stripeClient(env);
+  if (!stripe) return null;
+  const key = await stripeSetupKey(env);
+  const cur = (await env.ENTITLEMENTS.get<StripeSetup>(key, "json")) || { prices: {}, updatedAt: 0 };
+  const webhookUrl = origin.replace(/\/$/, "") + "/api/webhooks/stripe";
+  let changed = false;
+
+  /* 価格：env にあればそれ、無ければ KV、それも無ければ作る */
+  for (const plan of Object.keys(PLAN_PRICE_JPY) as Array<keyof typeof PLAN_PRICE_JPY>) {
+    const fromEnv = priceFor(env, plan);
+    if (fromEnv) { if (cur.prices[plan] !== fromEnv) { cur.prices[plan] = fromEnv; changed = true; } continue; }
+    if (cur.prices[plan]) continue;
+    const def = PLAN_PRICE_JPY[plan];
+    const found = await stripe.products.search({ query: `active:'true' AND metadata['app']:'trainingnotebook' AND metadata['plan']:'${plan}'` });
+    let product = found.data[0];
+    if (!product) product = await stripe.products.create({ name: def.name, description: def.desc, metadata: { app: "trainingnotebook", plan } });
+    const prices = await stripe.prices.list({ product: product.id, active: true, limit: 20 });
+    let price = prices.data.find(x => x.currency === "jpy" && x.recurring?.interval === "month" && x.unit_amount === def.amount);
+    if (!price) price = await stripe.prices.create({ product: product.id, currency: "jpy", unit_amount: def.amount, recurring: { interval: "month" }, metadata: { plan } });
+    cur.prices[plan] = price.id; changed = true;
+  }
+
+  /* Webhook：署名シークレットは作成時にしか返らないので、URL が変わっていたら作り直す */
+  if (!env.STRIPE_WEBHOOK_SECRET && (!cur.webhookSecret || cur.webhookUrl !== webhookUrl)) {
+    const list = await stripe.webhookEndpoints.list({ limit: 100 });
+    for (const ep of list.data) {
+      if (ep.metadata?.app === "trainingnotebook") { try { await stripe.webhookEndpoints.del(ep.id); } catch { /* ignore */ } }
+    }
+    const ep = await stripe.webhookEndpoints.create({
+      url: webhookUrl,
+      description: "training support（自動作成）",
+      metadata: { app: "trainingnotebook" },
+      enabled_events: [
+        "checkout.session.completed",
+        "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted",
+        "customer.subscription.paused", "customer.subscription.resumed",
+      ],
+    });
+    cur.webhookSecret = ep.secret || undefined; cur.webhookUrl = webhookUrl; changed = true;
+  }
+
+  /* 解約・カード変更の画面（カスタマーポータル）：無ければ作る */
+  if (!cur.portal) {
+    const existing = await stripe.billingPortal.configurations.list({ is_default: true, limit: 1 });
+    let conf = existing.data[0];
+    if (!conf) {
+      conf = await stripe.billingPortal.configurations.create({
+        business_profile: { headline: "training support", privacy_policy_url: origin + "/privacy.html", terms_of_service_url: origin + "/terms.html" },
+        default_return_url: origin + "/",
+        features: {
+          subscription_cancel: { enabled: true, mode: "at_period_end" },
+          payment_method_update: { enabled: true },
+          invoice_history: { enabled: true },
+        },
+      });
+    }
+    cur.portal = conf.id; changed = true;
+  }
+
+  if (changed) { cur.updatedAt = Date.now(); await env.ENTITLEMENTS.put(key, JSON.stringify(cur)); }
+  return cur;
+}
+
 async function applyStripeSubscription(env: Env, sub: Stripe.Subscription, identityHint?: string | null): Promise<void> {
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   const identity = identityHint || sub.metadata?.identity || (await env.ENTITLEMENTS.get("cust:" + customerId));
   if (!identity) return;
   const item = sub.items.data[0];
-  const plan = planForPrice(env, item?.price?.id) || "free";
+  const setup = env.STRIPE_SECRET_KEY ? await env.ENTITLEMENTS.get<StripeSetup>(await stripeSetupKey(env), "json") : null;
+  const plan = planForPrice(env, item?.price?.id, setup)
+    || asPlan(sub.metadata?.plan) || asPlan(item?.price?.metadata?.plan) || "free";
   const active = sub.status === "active" || sub.status === "trialing" || sub.status === "past_due";
   const periodEnd = item?.current_period_end ? item.current_period_end * 1000 : undefined;
   await setEntitlement(env, identity, {
@@ -215,9 +294,14 @@ async function handleCheckout(req: Request, env: Env, id: string): Promise<Respo
   const body = await req.json().catch(() => ({})) as { plan?: string };
   const plan = asPlan(body.plan);
   if (!plan || plan === "free") return bad("bad-plan");
-  const price = priceFor(env, plan);
+  const origin = new URL(req.url).origin;
+  let price = priceFor(env, plan);
+  if (!price) {
+    try { price = (await ensureStripe(env, origin))?.prices[plan] || null; }
+    catch (e) { console.error(e); return bad("stripe-setup-failed", 502); }
+  }
   if (!price) return bad("price-not-configured:" + plan, 503);
-  const appUrl = (env.APP_URL || new URL(req.url).origin).replace(/\/$/, "");
+  const appUrl = (env.APP_URL || origin).replace(/\/$/, "");
   const cur = await getEntitlement(env, id);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -250,18 +334,25 @@ async function handlePortal(req: Request, env: Env, id: string): Promise<Respons
   if (!stripe) return bad("stripe-not-configured", 503);
   const e = await getEntitlement(env, id);
   if (!e.stripeCustomerId) return bad("no-customer", 404);
+  try { await ensureStripe(env, new URL(req.url).origin); } catch (err) { console.error(err); }
   const appUrl = (env.APP_URL || new URL(req.url).origin).replace(/\/$/, "");
   const p = await stripe.billingPortal.sessions.create({ customer: e.stripeCustomerId, return_url: appUrl + "/" });
   return json({ url: p.url });
 }
 async function handleStripeWebhook(req: Request, env: Env): Promise<Response> {
   const stripe = stripeClient(env);
-  if (!stripe || !env.STRIPE_WEBHOOK_SECRET) return bad("stripe-not-configured", 503);
+  if (!stripe) return bad("stripe-not-configured", 503);
+  let secret = env.STRIPE_WEBHOOK_SECRET || "";
+  if (!secret) {
+    const setup = await env.ENTITLEMENTS.get<StripeSetup>(await stripeSetupKey(env), "json");
+    secret = setup?.webhookSecret || "";
+  }
+  if (!secret) return bad("webhook-not-configured", 503);
   const sig = req.headers.get("stripe-signature") || "";
   const raw = await req.text();
   let event: Stripe.Event;
   try {
-    event = await stripe.webhooks.constructEventAsync(raw, sig, env.STRIPE_WEBHOOK_SECRET, undefined, Stripe.createSubtleCryptoProvider());
+    event = await stripe.webhooks.constructEventAsync(raw, sig, secret, undefined, Stripe.createSubtleCryptoProvider());
   } catch (e) {
     return bad("bad-signature", 400);
   }
@@ -478,7 +569,14 @@ export default {
     const withCors = (r: Response) => { Object.entries(cors).forEach(([k, v]) => r.headers.set(k, v)); return r; };
 
     try {
-      if (path === "/api/health") return withCors(json({ ok: true, ai: !!env.ANTHROPIC_API_KEY, stripe: !!env.STRIPE_SECRET_KEY, revenuecat: !!env.REVENUECAT_API_KEY, model: env.AI_MODEL || "claude-opus-5" }));
+      if (path === "/api/health") {
+        let stripeReady: boolean | string = false;
+        if (env.STRIPE_SECRET_KEY) {
+          try { const st = await ensureStripe(env, url.origin); stripeReady = !!(st && st.prices.pro && (env.STRIPE_WEBHOOK_SECRET || st.webhookSecret)); }
+          catch (e) { stripeReady = "error:" + String((e as Error).message || e).slice(0, 120); }
+        }
+        return withCors(json({ ok: true, ai: !!env.ANTHROPIC_API_KEY, stripe: stripeReady, revenuecat: !!env.REVENUECAT_API_KEY, model: env.AI_MODEL || "claude-opus-5" }));
+      }
       if (path === "/api/webhooks/stripe" && req.method === "POST") return withCors(await handleStripeWebhook(req, env));
       if (path === "/api/webhooks/revenuecat" && req.method === "POST") return withCors(await handleRevenueCatWebhook(req, env));
 

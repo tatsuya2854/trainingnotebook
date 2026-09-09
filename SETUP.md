@@ -70,33 +70,30 @@ npm run deploy        # www/ 生成 → KV 作成 → デプロイ
 
 ## 2. Web のカード決済（Stripe）
 
-1. https://dashboard.stripe.com でアカウント作成 → 開発者 → API キーの **シークレットキー**（まずは `sk_test_...` で）
-2. 商品と価格を自動作成：
-   ```bash
-   STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup
-   ```
-   出力された `STRIPE_PRICE_PRO / MAX / TRAINER` を `wrangler.toml` の `[vars]` に書いて push（GitHub Actions 派なら Variables でも可）
-3. 鍵を Worker の「変数とシークレット」に `STRIPE_SECRET_KEY`（シークレット）として入れる（GitHub Actions 派なら Secrets）
-4. Webhook を登録：Stripe → 開発者 → Webhook → エンドポイント追加
-   - URL：`https://<WorkerのURL>/api/webhooks/stripe`
-   - イベント：`checkout.session.completed`、`customer.subscription.created / updated / deleted / paused / resumed`
-   - 署名シークレット `whsec_...` を同じく `STRIPE_WEBHOOK_SECRET` として入れる
-5. `wrangler.toml` の `APP_URL` に、アプリを配っている URL（決済後に戻る先）を書いて push（自動でデプロイされる）
-6. カスタマーポータル（解約・カード変更）を有効化：Stripe → 設定 → Billing → カスタマーポータル → 有効化
+**やることは Stripe の鍵を 1 つ貼るだけ。** 商品・価格・Webhook・解約画面は Worker が初回に自動で作る。
 
-テストカード `4242 4242 4242 4242` で「プロにする」→ 戻ってきたら設定 → プランが「プロ」になれば完成。
-本番は `sk_live_` のキーで 2〜4 をもう一度（Webhook も本番用に作り直す）。
+1. https://dashboard.stripe.com でアカウント作成（本人確認と口座登録は Stripe 側の案内どおりに）
+2. 開発者 → API キー → **シークレットキー** をコピー（まずはテスト用 `sk_test_...`。本番は `sk_live_...`）
+3. Cloudflare → Worker → 設定 → **変数とシークレット** → 追加 → シークレット `STRIPE_SECRET_KEY` → 値に貼る → デプロイ
+4. `https://<WorkerのURL>/api/health` を開いて `"stripe":true` になれば開通
+
+アプリの設定 → プラン → 「プロにする」でカード入力画面（Stripe Checkout）が開く。
+テストキーのときはテストカード `4242 4242 4242 4242`（有効期限は未来の任意、CVC 任意）で通る。
+戻ってきたらプランが「プロ」になり、「お支払いを管理」から解約・カード変更ができる。
+
+本番に切り替えるときは 2〜4 を `sk_live_` で繰り返すだけ（Webhook も本番用に自動で作り直される）。
+手動で設定したい場合は `wrangler.toml` の `STRIPE_PRICE_*` と Secrets の `STRIPE_WEBHOOK_SECRET` が優先される。
 
 ---
 
 ## 3. iOS アプリ（App Store）
 
 ### 3-1. 必要なもの
-- Mac + Xcode（最新）
-- Apple Developer Program（年 ¥15,800 前後）：https://developer.apple.com/programs/
+- Apple Developer Program（年 ¥15,800 前後・本人名義で登録）：https://developer.apple.com/programs/
 - RevenueCat アカウント（無料）：https://app.revenuecat.com
+- **Mac は無くてもいい。** GitHub の Mac でビルドして TestFlight に送るワークフローが入っている（3-2-B）
 
-### 3-2. Xcode で開く
+### 3-2-A. Mac がある場合（Xcode）
 ```bash
 npm install
 npm run ios:sync      # index.html → www/ → ios/ に反映（index.html を直すたびに実行）
@@ -108,7 +105,25 @@ Xcode で：
 - **+ Capability → In-App Purchase** を追加
 - アイコン・起動画面は入れてある（`ios/App/App/Assets.xcassets`）
 
-実機で Run できれば OK。
+### 3-2-B. Mac が無い場合（GitHub でビルド → TestFlight）
+1. App Store Connect（https://appstoreconnect.apple.com）→ マイ App → 「+」→ 新規 App
+   - プラットフォーム iOS、名前「training support」、バンドル ID `jp.trainingnotebook.app`（Identifiers で先に登録）、SKU は任意
+2. App Store Connect → **ユーザとアクセス → 統合 → App Store Connect API** → キーを生成（役割 **Admin**）
+   → `Issuer ID`・`キー ID` をメモし、`.p8` ファイルをダウンロード（1 回しかできない）
+3. Apple Developer → Membership details → **Team ID**（10 桁）をメモ
+4. GitHub → Settings → Secrets and variables → Actions に 4 つ：
+
+   | Secret 名 | 値 |
+   |---|---|
+   | `APPLE_TEAM_ID` | 3 の Team ID |
+   | `ASC_KEY_ID` | 2 のキー ID |
+   | `ASC_ISSUER_ID` | 2 の Issuer ID |
+   | `ASC_KEY_P8` | `.p8` ファイルの中身をテキストでそのまま |
+
+5. GitHub → Actions → **iOS TestFlight** → Run workflow（main に push したときも自動で走る）
+6. 20 分ほどで App Store Connect → TestFlight にビルドが並ぶ。iPhone に TestFlight アプリを入れて、自分をテスターに追加すればインストールできる
+
+証明書・プロビジョニングプロファイルは Xcode のクラウド署名が自動で作る。手作業は無い。
 
 ### 3-3. App 内課金（Apple の規約で iOS 内はこれ一択。Stripe リンクを出すと審査で落ちる）
 App Store Connect（https://appstoreconnect.apple.com）→ アプリを作成 → 「App 内課金」→ サブスクリプショングループを 1 つ作り、3 つ登録：
@@ -134,9 +149,9 @@ RevenueCat：
 `npm run ios:sync` し直して、Sandbox テスターで購入 → 設定 → プランが変われば完成。
 
 ### 3-4. 審査に出す
-- App Store Connect でプライバシーポリシー URL に `https://<配信URL>/privacy.html`、利用規約は `terms.html`
+- App Store Connect でプライバシーポリシー URL に `https://trainingnotebook.toropicanafanta.workers.dev/privacy.html`、利用規約は同 `/terms.html`
 - 「App のプライバシー」は「データを収集しない」or「識別子（端末ID）・利用状況」を正直に
-- Xcode → Product → Archive → Distribute → App Store Connect → TestFlight で自分の iPhone に入れて確認 → 審査へ
+- TestFlight で自分の iPhone に入れて確認 → App Store Connect でそのビルドを選んで審査へ提出
 - 審査メモに「AI相談は Claude API 経由。課金は StoreKit（RevenueCat）。復元ボタンはプラン画面にあります」と書いておくと通りやすい
 
 ---
@@ -153,9 +168,10 @@ RevenueCat：
 |---|---|
 | AI が「未設定」 | `index.html` の `BACKEND_URL`。同じ Worker から配信しているなら空で OK |
 | AI が「API キーが入っていません」 | Worker の「変数とシークレット」に `ANTHROPIC_API_KEY` を入れる |
-| 「決済はまだ準備中」 | `STRIPE_SECRET_KEY` と `STRIPE_PRICE_*` |
-| 支払ったのにフリーのまま | Stripe の Webhook URL と `STRIPE_WEBHOOK_SECRET`。戻り URL に `?checkout=success` が付いているか |
-| iOS で「準備ができていません」 | `RC_CONFIG.iosApiKey` と、Xcode の In-App Purchase Capability |
+| 「決済はまだ準備中」 | Worker のシークレット `STRIPE_SECRET_KEY`。`/api/health` の `stripe` が `error:` ならその文言を確認 |
+| 支払ったのにフリーのまま | Stripe ダッシュボード → 開発者 → Webhook に Worker の URL が自動登録されているか。戻り URL に `?checkout=success` が付いているか |
+| iOS で「準備ができていません」 | `RC_CONFIG.iosApiKey` |
+| iOS TestFlight のビルドが失敗 | Actions のログ末尾と `xcodebuild-logs` の成果物。App Store Connect に App（バンドル ID）が作ってあるか、API キーの役割が Admin か |
 | iOS で「商品が登録されていません」 | App Store Connect の製品 ID と RevenueCat の Offering |
 | Cloudflare のビルドが失敗する | 設定 → ビルド → ビルド構成が初期値（ルート `/`・ビルドコマンド無し・`npx wrangler deploy`）か。ログの赤い行を確認 |
 | ローカルで試したい | `cp .dev.vars.example .dev.vars` に鍵を書いて `npm run dev` → `http://localhost:8787` |
