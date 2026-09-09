@@ -1011,7 +1011,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.08";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.09";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -3983,7 +3983,7 @@ function renderStreak(){
    ・Web：Stripe Checkout（クレジットカード）
    ・iOS アプリ：App内課金（RevenueCat 経由）。App Store の規約で Web 決済は使えない
    ============================================================ */
-const BACKEND_URL = "";                 // 例 "https://trainingnotebook.xxx.workers.dev"。空なら配信元と同じサーバーを使う
+const BACKEND_URL = "https://trainingnotebook.toropicanafanta.workers.dev";   // Worker の本番URL（GitHub Pages や iOS アプリからもここを呼ぶ）
 const RC_CONFIG   = { iosApiKey: "" };  // RevenueCat の Public SDK key（appl_...）。iOS アプリの課金に必要
 const RC_PRODUCTS = { pro:"ts_pro_monthly", max:"ts_max_monthly", trainer:"ts_trainer_monthly" };  // App Store Connect の製品ID
 const LEGAL = { terms:"terms.html", privacy:"privacy.html" };
