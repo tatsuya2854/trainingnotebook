@@ -1,0 +1,40 @@
+# Cloudflare Worker の設定（API + www/ の静的配信）
+# ・Cloudflare の Git 連携は初期値（ルート "/"・ビルドコマンド無し・npx wrangler deploy）のままで動く
+# ・KV は id を書かない。wrangler が初回デプロイ時に自動作成し、以後は既存を引き継ぐ
+# ・手元：npm run deploy
+name = "trainingnotebook"
+main = "worker/src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# バンドル前に www/ を作る（index.html / privacy.html / terms.html を集める）
+[build]
+command = "node scripts/build-www.mjs"
+
+# www/ をそのまま配信する
+[assets]
+directory = "www"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# プラン・回数の保存先（自動作成）
+[[kv_namespaces]]
+binding = "ENTITLEMENTS"
+
+[vars]
+AI_MODEL = "claude-opus-5"          # 安くしたいなら "claude-sonnet-5"
+AI_EFFORT = "medium"                # low / medium / high
+AI_MAX_TOKENS = "2000"
+APP_URL = ""                        # 例 "https://tatsuya2854.github.io/trainingnotebook"（空なら Worker 自身のURL）
+ALLOWED_ORIGINS = "*"               # 例 "https://tatsuya2854.github.io,https://trainingnotebook.xxx.workers.dev"
+STRIPE_PRICE_PRO = ""               # npm run stripe:setup が出力する price_...
+STRIPE_PRICE_MAX = ""
+STRIPE_PRICE_TRAINER = ""
+FIREBASE_PROJECT_ID = ""            # Firebase 同期を使うときだけ
+
+# 秘密はダッシュボードの「変数とシークレット」か wrangler secret put で入れる（ファイルには書かない）
+#   ANTHROPIC_API_KEY        Anthropic コンソールの API キー
+#   STRIPE_SECRET_KEY        sk_live_... / sk_test_...
+#   STRIPE_WEBHOOK_SECRET    whsec_...
+#   REVENUECAT_WEBHOOK_AUTH  RevenueCat の Webhook に設定する任意の合言葉
+#   REVENUECAT_API_KEY       RevenueCat の Secret API key（sk_...）

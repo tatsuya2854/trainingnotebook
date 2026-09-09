@@ -1,0 +1,32 @@
+{
+  "name": "trainingnotebook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "筋トレ記録アプリ（Web / iOS）",
+  "scripts": {
+    "build": "node scripts/build-www.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc -p worker",
+    "stripe:setup": "node worker/scripts/stripe-setup.mjs",
+    "ios:sync": "npm run build && npx cap sync ios",
+    "ios:open": "npx cap open ios",
+    "worker:dev": "npm run dev",
+    "worker:deploy": "npm run deploy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
+    "stripe": "^22.6.1"
+  },
+  "devDependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
+    "@cloudflare/workers-types": "^5.20260908.1",
+    "@revenuecat/purchases-capacitor": "^13.5.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.130.0"
+  }
+}

@@ -1,0 +1,91 @@
+# Worker（API + www/ の静的配信）を GitHub Actions からデプロイする。
+# Cloudflare の Git 連携（Workers Builds）を使っているなら、これは不要（Secrets が無ければ何もしない）。
+#
+# 必要な GitHub Secrets（リポジトリ → Settings → Secrets and variables → Actions）
+#   必須：CLOUDFLARE_API_TOKEN（テンプレート「Edit Cloudflare Workers」）/ CLOUDFLARE_ACCOUNT_ID / ANTHROPIC_API_KEY
+#   任意：STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / REVENUECAT_API_KEY / REVENUECAT_WEBHOOK_AUTH
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "index.html"
+      - "privacy.html"
+      - "terms.html"
+      - "worker/**"
+      - "scripts/**"
+      - "wrangler.toml"
+      - "package.json"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID が未設定なのでデプロイをスキップしました"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.check.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Typecheck
+        if: steps.check.outputs.ready == 'true'
+        run: npm run typecheck
+
+      - name: Deploy
+        if: steps.check.outputs.ready == 'true'
+        id: deploy
+        run: |
+          set -o pipefail
+          npx wrangler deploy | tee deploy.log
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "### デプロイ完了 🚀" >> "$GITHUB_STEP_SUMMARY"
+          echo "- アプリ / API：$URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 動作確認：$URL/api/health" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sync secrets to Worker
+        if: steps.check.outputs.ready == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+          REVENUECAT_WEBHOOK_AUTH: ${{ secrets.REVENUECAT_WEBHOOK_AUTH }}
+        run: |
+          for NAME in ANTHROPIC_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET REVENUECAT_API_KEY REVENUECAT_WEBHOOK_AUTH; do
+            VAL="${!NAME}"
+            if [ -n "$VAL" ]; then
+              printf '%s' "$VAL" | npx wrangler secret put "$NAME" >/dev/null && echo "secret $NAME: 設定しました"
+            else
+              echo "secret $NAME: 未設定（スキップ）"
+            fi
+          done
+
+      - name: Health check
+        if: steps.check.outputs.ready == 'true' && steps.deploy.outputs.url != ''
+        run: |
+          sleep 5
+          curl -sS "${{ steps.deploy.outputs.url }}/api/health" | tee -a "$GITHUB_STEP_SUMMARY"
