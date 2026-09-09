@@ -702,6 +702,8 @@
   #view-ai.active{display:flex;flex-direction:column;padding-bottom:calc(var(--nav-h) + var(--safe-b) + 84px);}
   .ai-log{flex:1;display:flex;flex-direction:column;gap:10px;}
   .ai-msg{max-width:88%;padding:12px 14px;border-radius:14px;font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-word;}
+  .ai-msg .ai-h{display:block;font-weight:800;color:var(--pri);margin-top:4px;}
+  .ai-msg b{font-weight:800;}
   .ai-msg.me{align-self:flex-end;background:var(--pri-fill);color:var(--on-pri);border-bottom-right-radius:5px;}
   .ai-msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:5px;}
   .ai-msg.sys{align-self:center;max-width:100%;background:var(--surface-2);border:1px dashed var(--border);color:var(--muted);font-size:12px;}
@@ -4549,7 +4551,7 @@ function renderAI(){
   state.aiChat.slice(-30).forEach(m=>{
     const d = document.createElement("div");
     d.className = "ai-msg " + (m.role==="user" ? "me" : "ai");
-    d.textContent = m.content;
+    if(m.role==="user") d.textContent = m.content; else d.innerHTML = fmtAI(m.content);
     log.appendChild(d);
   });
   const sug = document.getElementById("ai-sug");
@@ -4561,6 +4563,29 @@ function renderAI(){
     sug.appendChild(b);
   });
   window.scrollTo(0, document.body.scrollHeight);
+}
+/* AI の返答を見やすく整形する。Markdown が混ざっても記号を見せない
+   ・## 見出し / 【見出し】 → 太字の行
+   ・**太字** → 太字、- 箇条書き → ・、表やコードの記号は落とす */
+function fmtAI(text){
+  const lines = escapeHtml(String(text||"")).replace(/\r/g,"").split("\n");
+  const out = [];
+  lines.forEach(ln=>{
+    let t = ln.replace(/\s+$/,"");
+    if(/^\s*```/.test(t)) return;                                   // コードブロックの囲いは捨てる
+    if(/^\s*\|?\s*:?-{2,}/.test(t) && t.indexOf("|")>=0) return;      // 表の罫線行は捨てる
+    const h = t.match(/^\s*#{1,6}\s+(.+)$/);
+    if(h){ out.push('<span class="ai-h">'+h[1].replace(/\*\*/g,"")+'</span>'); return; }
+    if(/^\s*【.+】\s*$/.test(t)){ out.push('<span class="ai-h">'+t.trim()+'</span>'); return; }
+    t = t.replace(/^\s*[-*•]\s+/, "・");                            // 箇条書き
+    t = t.replace(/^\s*(\d+)[.)]\s+/, "$1. ");
+    t = t.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");                  // 太字
+    t = t.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, "$1$2");          // 斜体の * は落とす
+    t = t.replace(/`([^`]+)`/g, "$1");
+    if(t.indexOf("|")>=0 && /^\s*\|.*\|\s*$/.test(t)) t = t.replace(/^\s*\||\|\s*$/g,"").split("|").map(x=>x.trim()).join("　");
+    out.push(t);
+  });
+  return out.join("\n").replace(/\n{3,}/g,"\n\n").trim();
 }
 function aiAppend(role, content){
   if(!Array.isArray(state.aiChat)) state.aiChat = [];
