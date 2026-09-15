@@ -22,6 +22,8 @@ export interface Env {
   AI_MAX_TOKENS?: string;
   APP_URL?: string;
   ALLOWED_ORIGINS?: string;
+  IP_FREE_AI_DAILY?: string;
+  IP_FREE_VISION_DAILY?: string;
   STRIPE_PRICE_PRO?: string;
   STRIPE_PRICE_MAX?: string;
   STRIPE_PRICE_TRAINER?: string;
@@ -154,6 +156,34 @@ async function addUsage(env: Env, id: string, kind: "ai" | "vision" = "ai"): Pro
   await env.ENTITLEMENTS.put(usageKey(id, kind), String(n), { expirationTtl: 45 * 86400 });
   return n;
 }
+/* ---------- タダ乗り対策（回線ごとの1日の上限） ----------
+   合言葉（端末の鍵）は誰でも作れるので、鍵の数だけ無料枠が増えてしまう。
+   そこで「無料プランのときだけ」回線（IP）ごとの1日の上限も見る。
+   ・有料の人は対象外。同じ回線の他人に巻き込まれない
+   ・IP はそのまま保存せず、短いハッシュにして数えるだけ */
+function clientIp(req: Request): string {
+  const v = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for") || "";
+  return v.split(",")[0].trim();
+}
+function dayKey(): string { return new Date().toISOString().slice(0, 10); }
+async function ipTag(ip: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("trainingnotebook:" + ip));
+  return Array.from(new Uint8Array(buf)).slice(0, 10).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function ipQuotaExceeded(env: Env, req: Request, kind: "ai" | "vision", plan: PlanId): Promise<boolean> {
+  if (plan !== "free") return false;
+  const ip = clientIp(req);
+  if (!ip) return false;
+  const raw = kind === "ai" ? env.IP_FREE_AI_DAILY : env.IP_FREE_VISION_DAILY;
+  const limit = parseInt(raw || (kind === "ai" ? "15" : "20"), 10);
+  if (!(limit > 0)) return false;
+  const key = "ipday:" + kind + ":" + (await ipTag(ip)) + ":" + dayKey();
+  const n = parseInt((await env.ENTITLEMENTS.get(key)) || "0", 10) || 0;
+  if (n >= limit) return true;
+  await env.ENTITLEMENTS.put(key, String(n + 1), { expirationTtl: 3 * 86400 });
+  return false;
+}
+
 async function meResponse(env: Env, id: string): Promise<Record<string, unknown>> {
   const e = await getEntitlement(env, id);
   const used = await getUsage(env, id);
@@ -447,6 +477,7 @@ async function handleAI(req: Request, env: Env, id: string): Promise<Response> {
   const limit = AI_LIMIT[e.plan];
   const used = await getUsage(env, id);
   if (limit >= 0 && used >= limit) return json({ error: "quota", plan: e.plan, ai: { limit, used, left: 0 } }, 402);
+  if (await ipQuotaExceeded(env, req, "ai", e.plan)) return json({ error: "ip-quota" }, 429);
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.AI_MODEL || "claude-opus-5";
@@ -508,6 +539,7 @@ async function handleVision(req: Request, env: Env, id: string): Promise<Respons
   const limit = VISION_LIMIT[e.plan];
   const used = await getUsage(env, id, "vision");
   if (limit >= 0 && used >= limit) return json({ error: "quota", plan: e.plan, vision: { limit, used, left: 0 } }, 402);
+  if (await ipQuotaExceeded(env, req, "vision", e.plan)) return json({ error: "ip-quota" }, 429);
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.AI_MODEL || "claude-opus-5";
@@ -573,7 +605,7 @@ export default {
         let stripeReady: boolean | string = false;
         if (env.STRIPE_SECRET_KEY) {
           try { const st = await ensureStripe(env, url.origin); stripeReady = !!(st && st.prices.pro && (env.STRIPE_WEBHOOK_SECRET || st.webhookSecret)); }
-          catch (e) { stripeReady = "error:" + String((e as Error).message || e).slice(0, 120); }
+          catch (e) { console.error(e); stripeReady = "error"; }   // 詳細はログだけに出す
         }
         return withCors(json({ ok: true, ai: !!env.ANTHROPIC_API_KEY, stripe: stripeReady, revenuecat: !!env.REVENUECAT_API_KEY, model: env.AI_MODEL || "claude-opus-5" }));
       }
