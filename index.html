@@ -1024,7 +1024,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.15b";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.15c";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -4011,11 +4011,11 @@ const NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform==
 
 const PLANS = {
   free:    {id:"free",    name:"フリー",       price:"¥0",        ai:3,  clients:1,
-            feats:["記録・カレンダー・体重・メニューは全部無料","AI相談は<b>お試し月3回</b>・📷 これ何？は<b>月10回</b>","クライアントは自分ひとり"]},
+            feats:["記録・カレンダー・体重・メニューは全部無料","AI相談 <b>月3回</b>・マシン判定と画面読み取り <b>各月10回</b>","クライアントは自分ひとり"]},
   pro:     {id:"pro",     name:"プロ",         price:"¥600/月",   ai:20, clients:1,
-            feats:["AI相談 <b>月20回</b>・📷 これ何？ <b>月60回</b>","記録を読ませてメニューを組んでもらえる","バックアップ・引き継ぎ込み"]},
+            feats:["AI相談 <b>月20回</b>・マシン判定 <b>月60回</b>・画面読み取り <b>月100回</b>","記録を読ませてメニューを組んでもらえる","バックアップ・引き継ぎ込み"]},
   max:     {id:"max",     name:"マックス",     price:"¥1,280/月", ai:-1, clients:1,
-            feats:["AI相談・📷 これ何？ <b>無制限</b>","停滞したその場で相談できる","トレーニング中の質問もし放題"]},
+            feats:["AI相談・マシン判定・画面読み取り <b>すべて無制限</b>","停滞したその場で相談できる","トレーニング中の質問もし放題"]},
   trainer: {id:"trainer", name:"トレーナー",   price:"¥3,980/月", ai:-1, clients:-1,
             feats:["<b>クライアント無制限</b>で切り替え管理","AI相談も無制限","指導する全員の記録を1台で"]},
 };
@@ -4202,7 +4202,7 @@ function openPlanSheet(reason){
       : (reason==="client"
         ? '<p class="set-note">2人目からのクライアント管理はトレーナープランの機能です。</p>'
         : (reason==="cardio"
-          ? '<p class="set-note">今月の画面読み取りを使い切りました。プロなら月300回まで使えます。</p>'
+          ? '<p class="set-note">今月の画面読み取りを使い切りました。プロなら月100回、マックス以上は無制限です。</p>'
           : (reason==="vision"
           ? '<p class="set-note">今月の「📷 これ何？」を使い切りました。プロで月60回、マックス以上は無制限です。</p>'
           : '')));
