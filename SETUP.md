@@ -54,6 +54,11 @@ Stripe や RevenueCat の鍵も同じ画面の Secrets に入れれば次のデ�
 - **📷 これ何？**（マシンの写真から名前・使い方を判定）も同じ Worker の `/api/vision` で動く。
   上限は AI相談と別枠でフリー月10回・プロ月60回・マックス以上は無制限（`worker/src/index.ts` の `VISION_LIMIT`）。
   写真1枚あたり ¥3〜5。
+- **タダ乗り対策**：合言葉（端末の鍵）は誰でも作れるので、無料プランのときだけ
+  「同じ回線から1日に使える回数」も見ている（既定 AI相談 15回 / 写真判定 20回）。
+  有料の人は対象外。数を変えるなら `wrangler.toml` の `IP_FREE_AI_DAILY` / `IP_FREE_VISION_DAILY`
+- **最後の砦**：Anthropic コンソール → Settings → Limits で**月の上限金額**を必ず設定しておく。
+  何が起きても請求はその額で止まる
 - モデルは既定で `claude-opus-5`。1 回の相談はだいたい ¥3〜5。コンソールの ¥3,000 で 600〜1,000 回くらい。
   安くしたいなら `wrangler.toml` の `AI_MODEL` を `claude-sonnet-5` に（半額以下）
 - 1-A のときの Stripe / RevenueCat の鍵は、ANTHROPIC_API_KEY と同じ「変数とシークレット」にシークレットとして追加。
@@ -173,5 +178,6 @@ RevenueCat：
 | iOS で「準備ができていません」 | `RC_CONFIG.iosApiKey` |
 | iOS TestFlight のビルドが失敗 | Actions のログ末尾と `xcodebuild-logs` の成果物。App Store Connect に App（バンドル ID）が作ってあるか、API キーの役割が Admin か |
 | iOS で「商品が登録されていません」 | App Store Connect の製品 ID と RevenueCat の Offering |
+| AI が「この回線からの無料利用が上限」 | タダ乗り対策の1日上限。`IP_FREE_AI_DAILY` を上げるか、翌日まで待つ |
 | Cloudflare のビルドが失敗する | 設定 → ビルド → ビルド構成が初期値（ルート `/`・ビルドコマンド無し・`npx wrangler deploy`）か。ログの赤い行を確認 |
 | ローカルで試したい | `cp .dev.vars.example .dev.vars` に鍵を書いて `npm run dev` → `http://localhost:8787` |

@@ -1013,7 +1013,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.09";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.15";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -4625,7 +4625,9 @@ async function sendAI(){
     }
     const d = document.createElement("div");
     d.className = "ai-msg sys";
-    d.textContent = (e && e.message==="no-backend")
+    d.textContent = (e && e.status===429)
+      ? "今日はこの回線からの無料利用が上限に達しました。明日また使えます（プランを上げると上限はなくなります）。"
+      : (e && e.message==="no-backend")
       ? "AIの接続先が未設定です。index.html の BACKEND_URL に Worker のURLを入れてください。"
       : (e && e.message==="ai-not-configured")
         ? "サーバーに Anthropic の API キーが入っていません（wrangler secret put ANTHROPIC_API_KEY）。"
@@ -4713,7 +4715,8 @@ async function identifyMachine(file){
       if(e.data && e.data.vision && state._srv) state._srv.vision = e.data.vision;
       openPlanSheet("vision"); return;
     }
-    const msg = (e && e.message==="ai-not-configured") ? "サーバーに Anthropic の API キーが入っていません。"
+    const msg = (e && e.status===429) ? "今日はこの回線からの無料利用が上限に達しました。明日また使えます。"
+              : (e && e.message==="ai-not-configured") ? "サーバーに Anthropic の API キーが入っていません。"
               : (e && e.message==="image-too-large") ? "写真が大きすぎました。もう一度撮ってください。"
               : (e && e.message==="refused") ? "この写真は判定できませんでした。器具だけが写るように撮り直してください。"
               : "つながりませんでした。電波を確認してもう一度お願いします。";
