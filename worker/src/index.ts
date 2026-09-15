@@ -38,7 +38,7 @@ const AI_LIMIT: Record<PlanId, number> = { free: 3, pro: 20, max: -1, trainer: -
 /* 「📷 これ何？」（マシン判定）の月の上限。AI相談とは別枠 */
 const VISION_LIMIT: Record<PlanId, number> = { free: 10, pro: 60, max: -1, trainer: -1 };
 /* 有酸素マシンの画面読み取り。軽いモデルを使うので上限は多めでよい */
-const CARDIO_LIMIT: Record<PlanId, number> = { free: 30, pro: 300, max: -1, trainer: -1 };
+const CARDIO_LIMIT: Record<PlanId, number> = { free: 10, pro: 100, max: -1, trainer: -1 };
 
 interface Entitlement {
   plan: PlanId;
