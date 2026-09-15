@@ -22,7 +22,9 @@ export interface Env {
   AI_MAX_TOKENS?: string;
   APP_URL?: string;
   ALLOWED_ORIGINS?: string;
+  CARDIO_MODEL?: string;
   IP_FREE_AI_DAILY?: string;
+  IP_FREE_CARDIO_DAILY?: string;
   IP_FREE_VISION_DAILY?: string;
   STRIPE_PRICE_PRO?: string;
   STRIPE_PRICE_MAX?: string;
@@ -35,6 +37,8 @@ const PLAN_ORDER: PlanId[] = ["free", "pro", "max", "trainer"];
 const AI_LIMIT: Record<PlanId, number> = { free: 3, pro: 20, max: -1, trainer: -1 };
 /* 「📷 これ何？」（マシン判定）の月の上限。AI相談とは別枠 */
 const VISION_LIMIT: Record<PlanId, number> = { free: 10, pro: 60, max: -1, trainer: -1 };
+/* 有酸素マシンの画面読み取り。軽いモデルを使うので上限は多めでよい */
+const CARDIO_LIMIT: Record<PlanId, number> = { free: 30, pro: 300, max: -1, trainer: -1 };
 
 interface Entitlement {
   plan: PlanId;
@@ -144,14 +148,16 @@ async function getEntitlement(env: Env, id: string): Promise<Entitlement> {
 async function setEntitlement(env: Env, id: string, e: Entitlement): Promise<void> {
   await env.ENTITLEMENTS.put("ent:" + id, JSON.stringify(e));
 }
-function usageKey(id: string, kind: "ai" | "vision"): string {
-  return (kind === "ai" ? "usage:" : "vusage:") + id + ":" + monthKey();
+type UseKind = "ai" | "vision" | "cardio";
+function usageKey(id: string, kind: UseKind): string {
+  const p = kind === "ai" ? "usage:" : kind === "vision" ? "vusage:" : "cusage:";
+  return p + id + ":" + monthKey();
 }
-async function getUsage(env: Env, id: string, kind: "ai" | "vision" = "ai"): Promise<number> {
+async function getUsage(env: Env, id: string, kind: UseKind = "ai"): Promise<number> {
   const v = await env.ENTITLEMENTS.get(usageKey(id, kind));
   return v ? parseInt(v, 10) || 0 : 0;
 }
-async function addUsage(env: Env, id: string, kind: "ai" | "vision" = "ai"): Promise<number> {
+async function addUsage(env: Env, id: string, kind: UseKind = "ai"): Promise<number> {
   const n = (await getUsage(env, id, kind)) + 1;
   await env.ENTITLEMENTS.put(usageKey(id, kind), String(n), { expirationTtl: 45 * 86400 });
   return n;
@@ -170,12 +176,12 @@ async function ipTag(ip: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("trainingnotebook:" + ip));
   return Array.from(new Uint8Array(buf)).slice(0, 10).map(b => b.toString(16).padStart(2, "0")).join("");
 }
-async function ipQuotaExceeded(env: Env, req: Request, kind: "ai" | "vision", plan: PlanId): Promise<boolean> {
+async function ipQuotaExceeded(env: Env, req: Request, kind: UseKind, plan: PlanId): Promise<boolean> {
   if (plan !== "free") return false;
   const ip = clientIp(req);
   if (!ip) return false;
-  const raw = kind === "ai" ? env.IP_FREE_AI_DAILY : env.IP_FREE_VISION_DAILY;
-  const limit = parseInt(raw || (kind === "ai" ? "15" : "20"), 10);
+  const raw = kind === "ai" ? env.IP_FREE_AI_DAILY : kind === "vision" ? env.IP_FREE_VISION_DAILY : env.IP_FREE_CARDIO_DAILY;
+  const limit = parseInt(raw || (kind === "ai" ? "15" : kind === "vision" ? "20" : "40"), 10);
   if (!(limit > 0)) return false;
   const key = "ipday:" + kind + ":" + (await ipTag(ip)) + ":" + dayKey();
   const n = parseInt((await env.ENTITLEMENTS.get(key)) || "0", 10) || 0;
@@ -190,6 +196,8 @@ async function meResponse(env: Env, id: string): Promise<Record<string, unknown>
   const limit = AI_LIMIT[e.plan];
   const vUsed = await getUsage(env, id, "vision");
   const vLimit = VISION_LIMIT[e.plan];
+  const cUsed = await getUsage(env, id, "cardio");
+  const cLimit = CARDIO_LIMIT[e.plan];
   return {
     identity: id,
     plan: e.plan,
@@ -199,6 +207,7 @@ async function meResponse(env: Env, id: string): Promise<Record<string, unknown>
     manageable: e.source === "stripe" && !!e.stripeCustomerId,
     ai: { limit, used, left: limit < 0 ? -1 : Math.max(0, limit - used) },
     vision: { limit: vLimit, used: vUsed, left: vLimit < 0 ? -1 : Math.max(0, vLimit - vUsed) },
+    cardio: { limit: cLimit, used: cUsed, left: cLimit < 0 ? -1 : Math.max(0, cLimit - cUsed) },
   };
 }
 
@@ -575,6 +584,64 @@ async function handleVision(req: Request, env: Env, id: string): Promise<Respons
   }
 }
 
+/* ---------- 有酸素マシンの画面を読み取る ----------
+   ・トレッドミル等の 7セグ表示は普通の OCR が苦手。数字は読めても
+     「どれが距離でどれがカロリーか」が判らないので、画面の並びごと理解できるモデルに任せる
+   ・軽いモデル（Haiku）で足りる。1枚あたりの費用は AI相談の10分の1以下
+   ・読めなかった項目は -1 を返させ、アプリ側で「空」として扱う */
+const CARDIO_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["found", "min", "dist", "kcal", "hr", "confidence", "note"],
+  properties: {
+    found:      { type: "boolean", description: "トレーニングマシンの表示画面が写っているか" },
+    min:        { type: "number",  description: "経過時間（分）。20:30 のような表示は 20.5 に直す。読めなければ -1" },
+    dist:       { type: "number",  description: "距離（km）。マイル表示なら km に換算する。読めなければ -1" },
+    kcal:       { type: "number",  description: "消費カロリー（kcal）。読めなければ -1" },
+    hr:         { type: "number",  description: "心拍数（bpm）。読めなければ -1" },
+    confidence: { type: "string",  enum: ["high", "mid", "low"], description: "読み取りの確かさ" },
+    note:       { type: "string",  description: "読めなかった項目や単位の注意を日本語で1行。無ければ空文字" },
+  },
+};
+async function handleCardio(req: Request, env: Env, id: string): Promise<Response> {
+  if (!env.ANTHROPIC_API_KEY) return bad("ai-not-configured", 503);
+  const body = await req.json().catch(() => null) as { image?: string; mediaType?: string } | null;
+  const image = (body?.image || "").replace(/^data:[^,]+,/, "");
+  if (!image || image.length > 2_800_000) return bad(image ? "image-too-large" : "no-image");
+  const mediaType = (["image/jpeg", "image/png", "image/webp"].includes(body?.mediaType || "") ? body!.mediaType : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp";
+
+  const e = await getEntitlement(env, id);
+  const limit = CARDIO_LIMIT[e.plan];
+  const used = await getUsage(env, id, "cardio");
+  if (limit >= 0 && used >= limit) return json({ error: "quota", plan: e.plan, cardio: { limit, used, left: 0 } }, 402);
+  if (await ipQuotaExceeded(env, req, "cardio", e.plan)) return json({ error: "ip-quota" }, 429);
+
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  try {
+    const res = await client.messages.create({
+      model: env.CARDIO_MODEL || "claude-haiku-4-5",
+      max_tokens: 500,
+      system: "あなたはジムのトレーニングマシンの表示パネルを読み取る係です。数字そのものより、どの数字がどの項目かを正しく対応させることを最優先にします。ラベル（TIME/DISTANCE/CALORIES/PULSE など）と数字の位置関係から判断してください。自信が持てない項目は推測せず -1 にします。",
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
+        { type: "text", text: "この画面から、経過時間・距離・消費カロリー・心拍数を読み取ってください。表示が無い項目や読み取れない項目は -1 にしてください。" },
+      ] }],
+      output_config: { format: { type: "json_schema", schema: CARDIO_SCHEMA } },
+    });
+    if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
+    const text = res.content.filter(b => b.type === "text").map(b => b.text).join("");
+    let out: Record<string, unknown>;
+    try { out = JSON.parse(text); } catch { return bad("cardio-parse", 502); }
+    const n = await addUsage(env, id, "cardio");
+    return json({ result: out, model: res.model, cardio: { limit, used: n, left: limit < 0 ? -1 : Math.max(0, limit - n) } });
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) return bad("ai-rate-limited", 429);
+    if (err instanceof Anthropic.AuthenticationError) return bad("ai-bad-key", 503);
+    if (err instanceof Anthropic.APIError) return bad("ai-api-" + err.status, 502);
+    return bad("ai-failed", 502);
+  }
+}
+
 /* ---------- 端末鍵 → アカウントの引き継ぎ ---------- */
 async function handleLink(env: Env, who: { id: string; deviceId: string | null; uid: string | null }): Promise<Response> {
   if (!who.uid || !who.deviceId || who.id === who.deviceId) return json(await meResponse(env, who.id));
@@ -619,6 +686,7 @@ export default {
       if (path === "/api/me" && req.method === "GET") return withCors(json(await meResponse(env, id)));
       if (path === "/api/ai" && req.method === "POST") return withCors(await handleAI(req, env, id));
       if (path === "/api/vision" && req.method === "POST") return withCors(await handleVision(req, env, id));
+      if (path === "/api/cardio" && req.method === "POST") return withCors(await handleCardio(req, env, id));
       if (path === "/api/checkout" && req.method === "POST") return withCors(await handleCheckout(req, env, id));
       if (path === "/api/checkout/confirm" && req.method === "GET") return withCors(await handleCheckoutConfirm(req, env, id));
       if (path === "/api/portal" && req.method === "POST") return withCors(await handlePortal(req, env, id));

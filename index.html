@@ -336,6 +336,16 @@
   .mphoto{display:flex;align-items:center;gap:12px;width:100%;margin:10px 0 2px;padding:8px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);text-align:left;}
   .mphoto img{width:64px;height:64px;object-fit:cover;border-radius:9px;flex:0 0 64px;}
   .mphoto-t{font-size:13px;font-weight:700;color:var(--muted);}
+  /* 有酸素マシンの画面読み取り */
+  .cardio-read{display:flex;align-items:center;justify-content:space-between;width:100%;margin:0 0 12px;padding:13px 14px;
+        border-radius:11px;background:var(--pri-dim);border:1px solid var(--pri-line);color:var(--pri);font-size:14px;font-weight:800;}
+  .cardio-read:active{background:var(--pri-line);}
+  .cf-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .cf-lab{flex:0 0 96px;font-size:14px;font-weight:700;color:var(--muted);}
+  .cf-in{flex:1;min-width:0;height:48px;padding:0 12px;border-radius:11px;background:var(--surface-2);
+        border:1px solid var(--border);color:var(--text);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .cf-in.miss{border-color:var(--red);}
+  .cf-unit{flex:0 0 auto;font-size:13px;color:var(--muted);width:38px;}
   .sr-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:56px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;text-align:left;}
   .sr-item:active{background:var(--surface-2);}
   .sr-item.active{border-color:var(--pri);background:var(--pri-dim);}
@@ -750,6 +760,7 @@
       <button class="cam-btn" id="cam-btn" title="マシンを撮って名前を調べる">📷<span>これ何？</span></button>
     </div>
     <input type="file" id="cam-file" accept="image/*" capture="environment" style="display:none">
+    <input type="file" id="cardio-file" accept="image/*" capture="environment" style="display:none">
     <div class="search-results" id="search-results"></div>
     <button class="ex-select" id="ex-select">
       <span class="es-l"><span class="es-area" id="es-area"></span><span class="es-name" id="es-name">種目を選ぶ</span></span>
@@ -1013,7 +1024,7 @@ function partsTrained(date){
   return PARTS.filter(p=> set.indexOf(p.id)>=0).map(p=> p.id);
 }
 
-const APP_VERSION = "2026.09.15";  // 更新が反映されたか確認するための版数
+const APP_VERSION = "2026.09.15b";  // 更新が反映されたか確認するための版数
 const BUILD_REPO  = "tatsuya2854/trainingnotebook";  // どのリポジトリから配信されているか
 
 /* ---------- エリア定義 ---------- */
@@ -1853,6 +1864,13 @@ function buildCardioCard(card, ex, prev, today){
   tl.className = "today-label";
   tl.textContent = (viewDate===todayStr() ? "今日" : fmtDate(viewDate)) + " — 記録";
   card.appendChild(tl);
+
+  /* マシンの表示画面を撮って、時間・距離・カロリー・心拍を埋める */
+  const rb = document.createElement("button");
+  rb.className = "cardio-read";
+  rb.innerHTML = '<span>📷 マシンの画面を読み取る</span><span>›</span>';
+  rb.onclick = ()=> openCardioCamera(ex.id);
+  card.appendChild(rb);
 
   CARDIO_FIELDS.forEach(f=>{
     const row = document.createElement("div");
@@ -4183,9 +4201,11 @@ function openPlanSheet(reason){
       ? '<p class="set-note">今月のAI相談を使い切りました。続けるならプランを上げてください。</p>'
       : (reason==="client"
         ? '<p class="set-note">2人目からのクライアント管理はトレーナープランの機能です。</p>'
-        : (reason==="vision"
+        : (reason==="cardio"
+          ? '<p class="set-note">今月の画面読み取りを使い切りました。プロなら月300回まで使えます。</p>'
+          : (reason==="vision"
           ? '<p class="set-note">今月の「📷 これ何？」を使い切りました。プロで月60回、マックス以上は無制限です。</p>'
-          : ''));
+          : '')));
   const srv = state._srv || {};
   let manage = "";
   if(NATIVE){
@@ -4807,6 +4827,116 @@ function openPhotoSheet(ex){
     delete ex.photo; save(); hideSheet(); renderTrainBody();
   };
 }
+/* ============================================================
+   有酸素マシンの画面を読み取って記録する
+   ・7セグの数字は普通の文字認識が苦手なうえ、「どの数字が何か」の対応付けが本質。
+     そこは画面ごと理解できる軽いモデルに任せる（1枚あたりの費用は相談の10分の1以下）
+   ・読み取りは必ず確認してから保存する。間違ったまま記録が汚れる方が困る
+   ============================================================ */
+function cardioLeft(){
+  const v = state._srv && state._srv.cardio;
+  if(!v) return null;
+  return v.limit < 0 ? Infinity : Math.max(0, v.limit - v.used);
+}
+function openCardioCamera(exId){
+  if(!hasBackend()){ toast("AIの接続先が未設定です（BACKEND_URL）"); return; }
+  const inp = document.getElementById("cardio-file");
+  inp.dataset.ex = exId || "";
+  inp.value = "";
+  inp.click();
+}
+/* 返ってきた数値を整える。読めなかった項目は -1 で返るので空にする */
+function cardioNum(v, dec){
+  const n = typeof v === "number" ? v : parseFloat(v);
+  if(!isFinite(n) || n < 0) return null;
+  return dec ? Math.round(n*10)/10 : Math.round(n);
+}
+async function readCardioPhoto(file, exId){
+  const sheet = document.getElementById("sheet");
+  let big, thumb;
+  try{
+    big   = await shrinkImage(file, 1280, 0.85);   // 数字が潰れないよう、機械の判定より少し大きめに送る
+    thumb = await shrinkImage(file, 420, 0.7);
+  }catch(e){ toast("写真を読み込めませんでした"); return; }
+  sheet.innerHTML =
+    '<h2>📷 画面を読み取る</h2>'+
+    '<img class="vis-photo" src="'+big+'" alt="">'+
+    '<div class="vis-wait"><span class="vis-spin"></span>数字を読んでいます…</div>'+
+    '<div class="sheet-btns"><button class="btn ghost" id="cd-close">閉じる</button></div>';
+  showSheet();
+  document.getElementById("cd-close").onclick = hideSheet;
+  try{
+    const d = await api("/api/cardio", {method:"POST", body: JSON.stringify({image: big, mediaType:"image/jpeg"})});
+    if(d && d.cardio && state._srv) state._srv.cardio = d.cardio;
+    openCardioConfirm(d.result || {}, exId, thumb);
+  }catch(e){
+    console.warn(e);
+    if(e && e.status===402){ openPlanSheet("cardio"); return; }
+    const msg = (e && e.status===429) ? "今日はこの回線からの無料利用が上限に達しました。明日また使えます。"
+              : (e && e.message==="ai-not-configured") ? "サーバーに Anthropic の API キーが入っていません。"
+              : (e && e.message==="image-too-large") ? "写真が大きすぎました。もう一度撮ってください。"
+              : "つながりませんでした。電波を確認してもう一度お願いします。";
+    const w = sheet.querySelector(".vis-wait");
+    if(w){ w.className = "vis-err"; w.textContent = msg; }
+  }
+}
+function openCardioConfirm(r, exId, thumb){
+  const sheet = document.getElementById("sheet");
+  const vals = {
+    min:  cardioNum(r.min,  false),
+    dist: cardioNum(r.dist, true),
+    kcal: cardioNum(r.kcal, false),
+    hr:   cardioNum(r.hr,   false),
+  };
+  const got = Object.keys(vals).filter(k=> vals[k]!=null).length;
+  const conf = {mid:"自信は中くらい。数字を確かめてから記録してください。",
+                low:"うまく読めませんでした。手で直すか、撮り直してください。"}[r.confidence] || "";
+  let rows = "";
+  CARDIO_FIELDS.forEach(f=>{
+    const v = vals[f.key];
+    rows += '<div class="cf-row">'+
+      '<div class="cf-lab">'+f.label+'</div>'+
+      '<input class="cf-in'+(v==null?" miss":"")+'" id="cf-'+f.key+'" type="number" inputmode="decimal" '+
+        'step="'+f.step+'" value="'+(v==null?"":v)+'" placeholder="–">'+
+      '<div class="cf-unit">'+f.unit+'</div>'+
+    '</div>';
+  });
+  sheet.innerHTML =
+    '<h2>読み取り結果<span class="vis-quota">'+(cardioLeft()===Infinity?"無制限":(cardioLeft()==null?"":"今月あと "+cardioLeft()+" 回"))+'</span></h2>'+
+    '<div class="vis-top"><img class="vis-thumb" src="'+thumb+'" alt="">'+
+      '<div class="vis-id"><div class="vis-name">'+(r.found===false?"画面が見つかりません":got+" 項目を読み取り")+'</div>'+
+      '<div class="vis-sub">違うところは直してから記録できます</div></div></div>'+
+    (conf ? '<p class="vis-conf">'+conf+'</p>' : '')+
+    (r.note ? '<p class="set-note">'+escapeHtml(String(r.note))+'</p>' : '')+
+    rows+
+    '<div class="sheet-btns">'+
+      '<button class="btn ghost" id="cf-cancel">やめる</button>'+
+      '<button class="btn primary" id="cf-ok">この内容で記録</button>'+
+    '</div>';
+  showSheet();
+  document.getElementById("cf-cancel").onclick = hideSheet;
+  document.getElementById("cf-ok").onclick = ()=>{
+    const ex = state.exercises.find(e=> e.id===exId) || state.exercises.find(e=> e.id===state.ui.currentExId);
+    if(!ex){ hideSheet(); return; }
+    const today = ensureTodaySession(ex.id);
+    if(!today.cardio) today.cardio = {min:null,dist:null,kcal:null,hr:null};
+    let n = 0;
+    CARDIO_FIELDS.forEach(f=>{
+      const el = document.getElementById("cf-"+f.key);
+      const raw = (el && el.value || "").trim();
+      if(raw===""){ return; }
+      const num = cardioNum(raw, f.dec);
+      if(num!=null){ today.cardio[f.key] = num; n++; }
+    });
+    today.t = Date.now();
+    save(); hideSheet(); renderTrain();
+    toast(n ? n+"項目を記録しました" : "記録する数字がありませんでした");
+  };
+}
+document.getElementById("cardio-file").onchange = function(){
+  const f = this.files[0]; const ex = this.dataset.ex; this.value = "";
+  if(f) readCardioPhoto(f, ex);
+};
 document.getElementById("cam-btn").onclick = openCamera;
 document.getElementById("cam-file").onchange = function(){ const f = this.files[0]; this.value = ""; if(f) identifyMachine(f); };
 
