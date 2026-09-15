@@ -54,9 +54,12 @@ Stripe や RevenueCat の鍵も同じ画面の Secrets に入れれば次のデ�
 - **📷 これ何？**（マシンの写真から名前・使い方を判定）も同じ Worker の `/api/vision` で動く。
   上限は AI相談と別枠でフリー月10回・プロ月60回・マックス以上は無制限（`worker/src/index.ts` の `VISION_LIMIT`）。
   写真1枚あたり ¥3〜5。
+- **有酸素マシンの画面読み取り**（`/api/cardio`）：トレッドミル等の表示を撮ると、時間・距離・カロリー・
+  心拍を読んで確認画面に入れる。軽いモデル（既定 `claude-haiku-4-5`）を使うので 1 枚あたり 0.3 円ほど。
+  上限はフリー月30回・プロ月300回・マックス以上は無制限（`worker/src/index.ts` の `CARDIO_LIMIT`）
 - **タダ乗り対策**：合言葉（端末の鍵）は誰でも作れるので、無料プランのときだけ
-  「同じ回線から1日に使える回数」も見ている（既定 AI相談 15回 / 写真判定 20回）。
-  有料の人は対象外。数を変えるなら `wrangler.toml` の `IP_FREE_AI_DAILY` / `IP_FREE_VISION_DAILY`
+  「同じ回線から1日に使える回数」も見ている（既定 AI相談 15回 / 写真判定 20回 / 画面読み取り 40回）。
+  有料の人は対象外。数を変えるなら `wrangler.toml` の `IP_FREE_AI_DAILY` / `IP_FREE_VISION_DAILY` / `IP_FREE_CARDIO_DAILY`
 - **最後の砦**：Anthropic コンソール → Settings → Limits で**月の上限金額**を必ず設定しておく。
   何が起きても請求はその額で止まる
 - モデルは既定で `claude-opus-5`。1 回の相談はだいたい ¥3〜5。コンソールの ¥3,000 で 600〜1,000 回くらい。
